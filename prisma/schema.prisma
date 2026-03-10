@@ -1,0 +1,707 @@
+generator client {
+  provider               = "prisma-client"
+  output                 = "../src/generated/prisma"
+  runtime                = "nodejs"
+  moduleFormat           = "esm"
+  generatedFileExtension = "ts"
+  importFileExtension    = "js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Visibility {
+  PUBLIC
+  PRIVATE
+  HIDDEN
+}
+
+enum EntityType {
+  OBJECT
+  SERVICE
+  SITUATION
+  SCAM_PATTERN
+  BRAND
+  PLATFORM
+  CONCEPT
+}
+
+enum EntityStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum SectionType {
+  DEFINITION
+  PURPOSE
+  COMMON_USES
+  NORMAL_PROCESS
+  SAFE_USAGE
+  DANGERS
+  RED_FLAGS
+  COMMON_SCAMS
+  HOW_TO_PROTECT_YOURSELF
+  WHAT_TO_DO_IF_AFFECTED
+  RELATED_ALTERNATIVES
+  NOTES
+}
+
+enum ConfidenceLevel {
+  LOW
+  MEDIUM
+  HIGH
+  VERIFIED
+}
+
+enum RelationType {
+  RELATED_TO
+  USED_FOR
+  SOLD_BY
+  COMMONLY_CONFUSED_WITH
+  RISK_FOR
+  SCAM_TARGETS
+  ALTERNATIVE_TO
+  PART_OF
+  REQUIRES
+  PRECEDES
+  FOLLOWS
+}
+
+enum OrganizationType {
+  BRAND
+  COMPANY
+  PUBLIC_BODY
+  NGO
+  MARKETPLACE
+  PLATFORM
+  OTHER
+}
+
+enum ReportType {
+  NORMAL_EXPERIENCE
+  BAD_EXPERIENCE
+  SCAM_ATTEMPT
+  SAFETY_INCIDENT
+  MISUSE_CASE
+  QUALITY_ISSUE
+  FRAUD_LOSS
+  WARNING
+}
+
+enum ReportChannel {
+  WEBSITE
+  APP
+  PHONE_CALL
+  SMS
+  EMAIL
+  SOCIAL_MEDIA
+  MARKETPLACE
+  IN_PERSON
+  STORE
+  OTHER
+}
+
+enum ReportOutcome {
+  SAFE
+  RESOLVED
+  NOT_RESOLVED
+  MONEY_LOST
+  TIME_LOST
+  ACCOUNT_COMPROMISED
+  ITEM_DAMAGED
+  INJURY
+  NEAR_MISS
+  UNKNOWN
+}
+
+enum SeverityLevel {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum VerificationState {
+  UNVERIFIED
+  PARTIALLY_VERIFIED
+  VERIFIED
+  REJECTED
+}
+
+enum ModerationState {
+  PENDING
+  APPROVED
+  REJECTED
+  FLAGGED
+  REMOVED
+}
+
+enum EvidenceType {
+  SCREENSHOT
+  RECEIPT
+  EMAIL
+  SMS
+  AUDIO
+  DOCUMENT
+  IMAGE
+  LINK
+  OTHER
+}
+
+enum PatternType {
+  SCAM_PATTERN
+  SAFETY_PATTERN
+  MISUSE_PATTERN
+  BAD_PRACTICE_PATTERN
+  QUALITY_PATTERN
+  BEHAVIOR_PATTERN
+}
+
+enum PatternStatus {
+  DRAFT
+  ACTIVE
+  UNDER_REVIEW
+  ARCHIVED
+}
+
+enum TimelineEventType {
+  ENTITY_CREATED
+  ENTITY_UPDATED
+  REPORT_SUBMITTED
+  REPORT_VERIFIED
+  PATTERN_DETECTED
+  PATTERN_UPDATED
+  RISK_INCREASED
+  RISK_DECREASED
+  BRAND_RESPONSE_POSTED
+  MODERATOR_NOTE_ADDED
+}
+
+enum TimelineSourceType {
+  SYSTEM
+  USER
+  AI
+  MODERATOR
+  BRAND
+}
+
+enum SourceType {
+  OFFICIAL
+  BRAND_OFFICIAL
+  NEWS
+  USER_REPORT
+  MODERATOR_NOTE
+  PUBLIC_DATASET
+  INTERNAL_ANALYSIS
+  OTHER
+}
+
+enum UserRole {
+  USER
+  CONTRIBUTOR
+  MODERATOR
+  EXPERT
+  BRAND_REP
+  ADMIN
+}
+
+enum ContributionTargetType {
+  ENTITY
+  ENTITY_SECTION
+  REPORT
+  PATTERN
+  SOURCE
+}
+
+enum ContributionType {
+  SUGGEST_EDIT
+  ADD_WARNING
+  ADD_SOURCE
+  FLAG_OUTDATED
+  FLAG_ABUSE
+  DISPUTE_CONTENT
+  MERGE_REQUEST
+}
+
+enum ContributionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  NEEDS_REVIEW
+}
+
+enum ModerationTargetType {
+  ENTITY
+  SECTION
+  REPORT
+  PATTERN
+  USER
+  ORGANIZATION
+}
+
+enum ModerationReason {
+  DEFAMATION_RISK
+  FALSE_INFORMATION
+  DUPLICATE
+  SPAM
+  HARASSMENT
+  SENSITIVE_CONTENT
+  LEGAL_REQUEST
+  BRAND_DISPUTE
+  OTHER
+}
+
+enum ModerationCaseState {
+  OPEN
+  IN_REVIEW
+  ACTION_TAKEN
+  REJECTED
+  ESCALATED
+  CLOSED
+}
+
+enum FollowType {
+  ENTITY
+  CATEGORY
+  PATTERN
+  ORGANIZATION
+}
+
+model User {
+  id              String   @id @default(cuid())
+  username        String   @unique
+  displayName     String
+  email           String   @unique
+  reputationScore Int      @default(0)
+  trustLevel      Int      @default(0)
+  role            UserRole @default(USER)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  createdEntities               Entity[]             @relation("EntityCreatedBy")
+  reports                       ExperienceReport[]
+  reviewedEvidence              ReportEvidence[]     @relation("EvidenceReviewedBy")
+  contributions                 Contribution[]       @relation("ContributionAuthor")
+  reviewedContributions         Contribution[]       @relation("ContributionReviewer")
+  openedModerationCases         ModerationCase[]     @relation("ModerationOpenedBy")
+  assignedModerationCases       ModerationCase[]     @relation("ModerationAssignedTo")
+  reviewedEntityTrustStatuses   EntityTrustStatus[]  @relation("EntityTrustReviewedBy")
+  reviewedPatternTrustStatuses  PatternTrustStatus[] @relation("PatternTrustReviewedBy")
+  timelineEvents                TimelineEvent[]      @relation("TimelineCreatedBy")
+  savedItems                    SavedItem[]
+  follows                       Follow[]
+
+  @@index([role])
+}
+
+model Entity {
+  id               String       @id @default(cuid())
+  slug             String       @unique
+  title            String
+  entityType       EntityType
+  shortDescription String
+  longDescription  String?
+  status           EntityStatus @default(DRAFT)
+  visibility       Visibility   @default(PUBLIC)
+
+  createdByUserId String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  publishedAt     DateTime?
+
+  createdBy User? @relation("EntityCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  sections          EntitySection[]
+  categories        EntityCategory[]
+  relationsFrom     EntityRelation[]      @relation("FromEntityRelations")
+  relationsTo       EntityRelation[]      @relation("ToEntityRelations")
+  reports           ExperienceReport[]
+  organizationLinks EntityOrganization[]
+  patternLinks      PatternEntityLink[]
+  timelineEvents    TimelineEvent[]
+  trustStatus       EntityTrustStatus?
+  savedBy           SavedItem[]
+
+  @@index([entityType, status])
+  @@index([visibility])
+  @@index([createdByUserId])
+}
+
+model Category {
+  id               String  @id @default(cuid())
+  slug             String  @unique
+  name             String
+  parentCategoryId String?
+
+  parent   Category?  @relation("CategoryTree", fields: [parentCategoryId], references: [id], onDelete: SetNull)
+  children Category[] @relation("CategoryTree")
+
+  entities EntityCategory[]
+  follows  Follow[]
+
+  @@index([parentCategoryId])
+}
+
+model EntityCategory {
+  entityId   String
+  categoryId String
+
+  entity   Entity   @relation(fields: [entityId], references: [id], onDelete: Cascade)
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@id([entityId, categoryId])
+  @@index([categoryId])
+}
+
+model EntitySection {
+  id               String          @id @default(cuid())
+  entityId         String
+  sectionType      SectionType
+  title            String
+  content          String
+  sortOrder        Int             @default(0)
+  sourceConfidence ConfidenceLevel @default(MEDIUM)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  entity  Entity              @relation(fields: [entityId], references: [id], onDelete: Cascade)
+  sources SectionSourceLink[]
+
+  @@index([entityId, sectionType])
+  @@index([sortOrder])
+}
+
+model EntityRelation {
+  id           String       @id @default(cuid())
+  fromEntityId String
+  toEntityId   String
+  relationType RelationType
+  weight       Float?
+  note         String?
+
+  fromEntity Entity @relation("FromEntityRelations", fields: [fromEntityId], references: [id], onDelete: Cascade)
+  toEntity   Entity @relation("ToEntityRelations", fields: [toEntityId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([fromEntityId, toEntityId, relationType])
+  @@index([fromEntityId, relationType])
+  @@index([toEntityId, relationType])
+}
+
+model Organization {
+  id               String           @id @default(cuid())
+  slug             String           @unique
+  name             String
+  organizationType OrganizationType
+  officialWebsite  String?
+  verified         Boolean          @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  entityLinks EntityOrganization[]
+  follows     Follow[]
+
+  @@index([organizationType])
+  @@index([verified])
+}
+
+model EntityOrganization {
+  entityId       String
+  organizationId String
+  relationLabel  String
+
+  entity       Entity       @relation(fields: [entityId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@id([entityId, organizationId, relationLabel])
+  @@index([organizationId])
+}
+
+model ExperienceReport {
+  id       String @id @default(cuid())
+  entityId String
+  userId   String?
+
+  reportType ReportType
+  title      String
+  narrative  String
+
+  happenedAt        DateTime?
+  reportedAt        DateTime          @default(now())
+  countryCode       String?
+  region            String?
+  city              String?
+  channel           ReportChannel?
+  outcome           ReportOutcome?
+  moneyLostAmount   Decimal?          @db.Decimal(12, 2)
+  currency          String?
+  severityLevel     SeverityLevel     @default(MEDIUM)
+  verificationState VerificationState @default(UNVERIFIED)
+  moderationState   ModerationState   @default(PENDING)
+
+  isAnonymous Boolean @default(false)
+  isPublic    Boolean @default(true)
+
+  entity Entity @relation(fields: [entityId], references: [id], onDelete: Cascade)
+  user   User?  @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  evidence       ReportEvidence[]
+  patternLinks   PatternReportLink[]
+  timelineEvents TimelineEvent[]
+
+  @@index([entityId, reportedAt])
+  @@index([userId])
+  @@index([reportType])
+  @@index([channel])
+  @@index([verificationState, moderationState])
+  @@index([countryCode, region, city])
+}
+
+model ReportEvidence {
+  id           String       @id @default(cuid())
+  reportId      String
+  evidenceType  EvidenceType
+  fileUrl       String?
+  textExcerpt   String?
+  metadataJson  Json?
+  visibility    Visibility   @default(PRIVATE)
+
+  reviewedByModeratorId String?
+  reviewedAt            DateTime?
+
+  createdAt DateTime @default(now())
+
+  report              ExperienceReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  reviewedByModerator User?            @relation("EvidenceReviewedBy", fields: [reviewedByModeratorId], references: [id], onDelete: SetNull)
+
+  @@index([reportId])
+  @@index([reviewedByModeratorId])
+}
+
+model PatternCard {
+  id              String        @id @default(cuid())
+  slug            String        @unique
+  title           String
+  summary         String
+  patternType     PatternType
+  severityLevel   SeverityLevel @default(MEDIUM)
+  firstSeenAt     DateTime?
+  lastSeenAt      DateTime?
+  reportCount     Int           @default(0)
+  confidenceScore Float         @default(0)
+  aiGenerated     Boolean       @default(true)
+  humanReviewed   Boolean       @default(false)
+  status          PatternStatus @default(DRAFT)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  entityLinks    PatternEntityLink[]
+  reportLinks    PatternReportLink[]
+  timelineEvents TimelineEvent[]
+  trustStatus    PatternTrustStatus?
+
+  @@index([patternType, status])
+  @@index([lastSeenAt])
+  @@index([reportCount])
+}
+
+model PatternEntityLink {
+  patternId      String
+  entityId       String
+  relevanceScore Float @default(0)
+
+  pattern PatternCard @relation(fields: [patternId], references: [id], onDelete: Cascade)
+  entity  Entity      @relation(fields: [entityId], references: [id], onDelete: Cascade)
+
+  @@id([patternId, entityId])
+  @@index([entityId])
+}
+
+model PatternReportLink {
+  patternId      String
+  reportId       String
+  aiScore        Float   @default(0)
+  humanValidated Boolean @default(false)
+
+  pattern PatternCard      @relation(fields: [patternId], references: [id], onDelete: Cascade)
+  report  ExperienceReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@id([patternId, reportId])
+  @@index([reportId])
+}
+
+model TimelineEvent {
+  id       String @id @default(cuid())
+  entityId String?
+  patternId String?
+  reportId String?
+
+  eventType   TimelineEventType
+  title       String
+  description String?
+  eventAt     DateTime
+  sourceType  TimelineSourceType
+
+  createdByUserId String?
+  createdAt       DateTime @default(now())
+
+  entity        Entity?           @relation(fields: [entityId], references: [id], onDelete: Cascade)
+  pattern       PatternCard?      @relation(fields: [patternId], references: [id], onDelete: Cascade)
+  report        ExperienceReport? @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  createdByUser User?             @relation("TimelineCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@index([entityId, eventAt])
+  @@index([patternId, eventAt])
+  @@index([reportId, eventAt])
+  @@index([eventType])
+}
+
+model Source {
+  id               String     @id @default(cuid())
+  sourceType       SourceType
+  title            String
+  url              String?
+  publisher        String?
+  publishedAt      DateTime?
+  retrievedAt      DateTime?
+  reliabilityScore Float?
+  notes            String?
+
+  createdAt DateTime @default(now())
+
+  sectionLinks SectionSourceLink[]
+
+  @@index([sourceType])
+  @@index([publisher])
+}
+
+model SectionSourceLink {
+  sectionId String
+  sourceId  String
+
+  section EntitySection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  source  Source        @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+
+  @@id([sectionId, sourceId])
+  @@index([sourceId])
+}
+
+model EntityTrustStatus {
+  id                      String          @id @default(cuid())
+  entityId                String          @unique
+  factualConfidence       ConfidenceLevel @default(MEDIUM)
+  communitySignalStrength ConfidenceLevel @default(LOW)
+  moderationConfidence    ConfidenceLevel @default(MEDIUM)
+  lastReviewedAt          DateTime?
+  reviewedByUserId        String?
+  notes                   String?
+
+  entity         Entity @relation(fields: [entityId], references: [id], onDelete: Cascade)
+  reviewedByUser User?  @relation("EntityTrustReviewedBy", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([reviewedByUserId])
+}
+
+model PatternTrustStatus {
+  id                      String          @id @default(cuid())
+  patternId               String          @unique
+  factualConfidence       ConfidenceLevel @default(MEDIUM)
+  communitySignalStrength ConfidenceLevel @default(MEDIUM)
+  moderationConfidence    ConfidenceLevel @default(MEDIUM)
+  lastReviewedAt          DateTime?
+  reviewedByUserId        String?
+  notes                   String?
+
+  pattern        PatternCard @relation(fields: [patternId], references: [id], onDelete: Cascade)
+  reviewedByUser User?       @relation("PatternTrustReviewedBy", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([reviewedByUserId])
+}
+
+model Contribution {
+  id         String @id @default(cuid())
+  userId     String
+  targetType ContributionTargetType
+  targetId   String
+
+  contributionType ContributionType
+  payloadJson      Json
+
+  status      ContributionStatus @default(PENDING)
+  moderatorId String?
+  createdAt   DateTime @default(now())
+  reviewedAt  DateTime?
+
+  user      User  @relation("ContributionAuthor", fields: [userId], references: [id], onDelete: Cascade)
+  moderator User? @relation("ContributionReviewer", fields: [moderatorId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([targetType, targetId])
+  @@index([status])
+  @@index([moderatorId])
+}
+
+model ModerationCase {
+  id         String @id @default(cuid())
+  targetType ModerationTargetType
+  targetId   String
+
+  reason              ModerationReason
+  openedByUserId      String?
+  assignedModeratorId String?
+
+  state      ModerationCaseState @default(OPEN)
+  notes      String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  resolvedAt DateTime?
+
+  openedBy          User? @relation("ModerationOpenedBy", fields: [openedByUserId], references: [id], onDelete: SetNull)
+  assignedModerator User? @relation("ModerationAssignedTo", fields: [assignedModeratorId], references: [id], onDelete: SetNull)
+
+  @@index([targetType, targetId])
+  @@index([state])
+  @@index([assignedModeratorId])
+  @@index([openedByUserId])
+}
+
+model SavedItem {
+  userId   String
+  entityId String
+  createdAt DateTime @default(now())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  entity Entity @relation(fields: [entityId], references: [id], onDelete: Cascade)
+
+  @@id([userId, entityId])
+  @@index([entityId])
+}
+
+model Follow {
+  id         String     @id @default(cuid())
+  userId     String
+  followType FollowType
+  targetId   String
+  createdAt  DateTime   @default(now())
+
+  categoryId     String?
+  organizationId String?
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category     Category?     @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, followType, targetId])
+  @@index([followType, targetId])
+  @@index([categoryId])
+  @@index([organizationId])
+}
