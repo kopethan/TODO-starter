@@ -1,0 +1,9 @@
+export const entityTypes = ["OBJECT", "SERVICE", "SITUATION", "SCAM_PATTERN", "BRAND", "PLATFORM", "CONCEPT"] as const;
+export const entityStatuses = ["DRAFT", "PUBLISHED", "ARCHIVED"] as const;
+export const visibilityOptions = ["PUBLIC", "PRIVATE", "HIDDEN"] as const;
+export const sectionTypes = ["DEFINITION", "PURPOSE", "COMMON_USES", "NORMAL_PROCESS", "SAFE_USAGE", "DANGERS", "RED_FLAGS", "COMMON_SCAMS", "HOW_TO_PROTECT_YOURSELF", "WHAT_TO_DO_IF_AFFECTED", "RELATED_ALTERNATIVES", "NOTES"] as const;
+export const reportTypes = ["NORMAL_EXPERIENCE", "BAD_EXPERIENCE", "SCAM_ATTEMPT", "SAFETY_INCIDENT", "MISUSE_CASE", "QUALITY_ISSUE", "FRAUD_LOSS", "WARNING"] as const;
+export const verificationStates = ["UNVERIFIED", "PARTIALLY_VERIFIED", "VERIFIED", "REJECTED"] as const;
+export const moderationStates = ["PENDING", "APPROVED", "REJECTED", "FLAGGED", "REMOVED"] as const;
+export const severityLevels = ["LOW", "MEDIUM", "HIGH", "CRITICAL"] as const;
+export const reportOutcomes = ["SAFE", "RESOLVED", "NOT_RESOLVED", "MONEY_LOST", "TIME_LOST", "ACCOUNT_COMPROMISED", "ITEM_DAMAGED", "INJURY", "NEAR_MISS", "UNKNOWN"] as const;

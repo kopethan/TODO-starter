@@ -23,10 +23,12 @@ The starter already includes:
 - a seed file with sample entities, sections, trust data, one scam report, and one early pattern
 - minimal REST routes for health, entities, and reports
 - documentation in the `docs/` folder
+- `admin-ui/`, a separate Next.js web app starter for the public web shell and first admin workspace
 
 ## Project structure
 ```text
 TODO-backend-starter/
+├── admin-ui/
 ├── docs/
 ├── prisma/
 │   ├── schema.prisma
@@ -83,63 +85,52 @@ The API will be available at:
 http://localhost:4000/api
 ```
 
-## Available routes
+## Web app starter
+A separate web app now lives in `admin-ui/`.
+
+### Included routes
+#### Public
+- `/`
+- `/entities/[slug]`
+- `/reports`
+
+#### Admin
+- `/admin/entities`
+- `/admin/entities/new`
+- `/admin/entities/[id]`
+- `/admin/reports`
+- `/admin/reports/[id]`
+
+### Run the web app
+```bash
+cd admin-ui
+cp .env.example .env.local
+npm install
+npm run dev
+```
+
+Default API target:
+```text
+NEXT_PUBLIC_API_BASE_URL=http://localhost:4000/api
+```
+
+## Available API routes
 ### Health
 - `GET /api/health`
 
 ### Entities
 - `GET /api/entities`
+- `GET /api/entities/id/:id`
 - `GET /api/entities/:slug`
 - `POST /api/entities`
+- `PATCH /api/entities/id/:id`
+- `DELETE /api/entities/id/:id`
 - `POST /api/entities/:entityId/sections`
+- `PATCH /api/entities/:entityId/sections/:sectionId`
+- `DELETE /api/entities/:entityId/sections/:sectionId`
 
 ### Reports
 - `GET /api/reports`
+- `GET /api/reports/:id`
 - `POST /api/reports`
-
-## Example payloads
-### Create an entity
-```json
-{
-  "title": "Used iPhone",
-  "entityType": "OBJECT",
-  "shortDescription": "A second-hand iPhone bought from a private seller or marketplace.",
-  "longDescription": "Phones are useful, but buyers need to check battery health, iCloud status, and payment safety.",
-  "status": "PUBLISHED",
-  "visibility": "PUBLIC"
-}
-```
-
-### Create an entity section
-```json
-{
-  "sectionType": "RED_FLAGS",
-  "title": "Red flags",
-  "content": "Seller refuses to show IMEI, asks for a deposit before meeting, or forces off-platform payment.",
-  "sortOrder": 3
-}
-```
-
-### Create a report
-```json
-{
-  "entityId": "ENTITY_ID_HERE",
-  "reportType": "SCAM_ATTEMPT",
-  "title": "Caller pushed for urgent action",
-  "narrative": "The caller claimed to be from my bank and pressured me to validate actions immediately.",
-  "channel": "PHONE_CALL",
-  "outcome": "SAFE",
-  "severityLevel": "HIGH",
-  "isAnonymous": true,
-  "isPublic": true
-}
-```
-
-## What to build next
-A smart next step would be:
-1. add authentication
-2. add CRUD for categories and sources
-3. add moderation endpoints
-4. add pattern generation workflow
-5. add timeline and follow/save endpoints
-6. connect a frontend admin panel
+- `PATCH /api/reports/:id`
