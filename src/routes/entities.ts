@@ -7,6 +7,7 @@ import {
   Visibility
 } from "../generated/prisma/enums.js";
 import { prisma } from "../lib/prisma.js";
+import { omitUndefined } from "../utils/omit-undefined.js";
 import { slugify } from "../utils/slugify.js";
 
 export const entitiesRouter = Router();
@@ -65,17 +66,17 @@ entitiesRouter.get("/entities", async (req, res, next) => {
     const query = listEntitiesQuerySchema.parse(req.query);
 
     const entities = await prisma.entity.findMany({
-      where: {
+      where: omitUndefined({
         entityType: query.type,
         status: query.status,
         visibility: query.visibility,
         OR: query.q
           ? [
-              { title: { contains: query.q, mode: "insensitive" } },
-              { shortDescription: { contains: query.q, mode: "insensitive" } }
+              { title: { contains: query.q, mode: "insensitive" as const } },
+              { shortDescription: { contains: query.q, mode: "insensitive" as const } }
             ]
           : undefined
-      },
+      }),
       orderBy: { updatedAt: "desc" },
       include: {
         categories: {
@@ -184,16 +185,16 @@ entitiesRouter.post("/entities", async (req, res, next) => {
     const slug = body.slug ? slugify(body.slug) : slugify(body.title);
 
     const created = await prisma.entity.create({
-      data: {
+      data: omitUndefined({
         slug,
         title: body.title,
         entityType: body.entityType,
         shortDescription: body.shortDescription,
-        longDescription: body.longDescription,
+        longDescription: body.longDescription ?? null,
         status: body.status,
         visibility: body.visibility,
         publishedAt: body.status === EntityStatus.PUBLISHED ? new Date() : null
-      }
+      })
     });
 
     res.status(201).json(created);
@@ -219,7 +220,7 @@ entitiesRouter.patch("/entities/id/:id", async (req, res, next) => {
 
     const updated = await prisma.entity.update({
       where: { id: req.params.id },
-      data: {
+      data: omitUndefined({
         title: body.title,
         slug: body.slug ? slugify(body.slug) : undefined,
         entityType: body.entityType,
@@ -232,7 +233,7 @@ entitiesRouter.patch("/entities/id/:id", async (req, res, next) => {
           !existing.publishedAt && nextStatus === EntityStatus.PUBLISHED
             ? new Date()
             : undefined
-      }
+      })
     });
 
     res.json(updated);
@@ -313,12 +314,12 @@ entitiesRouter.patch(
 
       const updated = await prisma.entitySection.update({
         where: { id: req.params.sectionId },
-        data: {
+        data: omitUndefined({
           sectionType: body.sectionType,
           title: body.title,
           content: body.content,
           sortOrder: body.sortOrder
-        }
+        })
       });
 
       res.json(updated);

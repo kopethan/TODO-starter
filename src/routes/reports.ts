@@ -9,6 +9,7 @@ import {
   VerificationState
 } from "../generated/prisma/enums.js";
 import { prisma } from "../lib/prisma.js";
+import { omitUndefined } from "../utils/omit-undefined.js";
 
 export const reportsRouter = Router();
 
@@ -53,12 +54,12 @@ reportsRouter.get("/reports", async (req, res, next) => {
     const query = listReportsQuerySchema.parse(req.query);
 
     const reports = await prisma.experienceReport.findMany({
-      where: {
+      where: omitUndefined({
         entityId: query.entityId,
         reportType: query.reportType,
         moderationState: query.moderationState,
         verificationState: query.verificationState
-      },
+      }),
       orderBy: { reportedAt: "desc" },
       include: {
         entity: {
@@ -120,12 +121,12 @@ reportsRouter.post("/reports", async (req, res, next) => {
     }
 
     const created = await prisma.experienceReport.create({
-      data: {
+      data: omitUndefined({
         entityId: body.entityId,
         reportType: body.reportType,
         title: body.title,
         narrative: body.narrative,
-        happenedAt: body.happenedAt ? new Date(body.happenedAt) : undefined,
+        happenedAt: body.happenedAt ? new Date(body.happenedAt) : null,
         countryCode: body.countryCode,
         region: body.region,
         city: body.city,
@@ -138,7 +139,7 @@ reportsRouter.post("/reports", async (req, res, next) => {
         isPublic: body.isPublic,
         moderationState: ModerationState.PENDING,
         verificationState: VerificationState.UNVERIFIED
-      }
+      })
     });
 
     res.status(201).json(created);
@@ -163,12 +164,12 @@ reportsRouter.patch("/reports/:id", async (req, res, next) => {
 
     const updated = await prisma.experienceReport.update({
       where: { id: req.params.id },
-      data: {
+      data: omitUndefined({
         verificationState: body.verificationState,
         moderationState: body.moderationState,
         severityLevel: body.severityLevel,
         outcome: body.outcome
-      }
+      })
     });
 
     res.json(updated);
