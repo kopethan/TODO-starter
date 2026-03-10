@@ -28,12 +28,37 @@ const createEntitySchema = z.object({
   visibility: z.nativeEnum(Visibility).default(Visibility.PUBLIC)
 });
 
+const updateEntitySchema = z
+  .object({
+    title: z.string().min(2).optional(),
+    slug: z.string().min(2).optional(),
+    entityType: z.nativeEnum(EntityType).optional(),
+    shortDescription: z.string().min(10).optional(),
+    longDescription: z.string().min(10).nullable().optional(),
+    status: z.nativeEnum(EntityStatus).optional(),
+    visibility: z.nativeEnum(Visibility).optional()
+  })
+  .refine((value) => Object.keys(value).length > 0, {
+    message: "At least one field is required."
+  });
+
 const createSectionSchema = z.object({
   sectionType: z.nativeEnum(SectionType),
   title: z.string().min(2),
   content: z.string().min(10),
   sortOrder: z.number().int().nonnegative().default(0)
 });
+
+const updateSectionSchema = z
+  .object({
+    sectionType: z.nativeEnum(SectionType).optional(),
+    title: z.string().min(2).optional(),
+    content: z.string().min(10).optional(),
+    sortOrder: z.number().int().nonnegative().optional()
+  })
+  .refine((value) => Object.keys(value).length > 0, {
+    message: "At least one field is required."
+  });
 
 entitiesRouter.get("/entities", async (req, res, next) => {
   try {
@@ -68,6 +93,46 @@ entitiesRouter.get("/entities", async (req, res, next) => {
     });
 
     res.json(entities);
+  } catch (error) {
+    next(error);
+  }
+});
+
+entitiesRouter.get("/entities/id/:id", async (req, res, next) => {
+  try {
+    const entity = await prisma.entity.findUnique({
+      where: { id: req.params.id },
+      include: {
+        sections: {
+          orderBy: { sortOrder: "asc" },
+          include: {
+            sources: {
+              include: {
+                source: true
+              }
+            }
+          }
+        },
+        categories: {
+          include: {
+            category: true
+          }
+        },
+        trustStatus: true,
+        _count: {
+          select: {
+            reports: true
+          }
+        }
+      }
+    });
+
+    if (!entity) {
+      res.status(404).json({ message: "Entity not found." });
+      return;
+    }
+
+    res.json(entity);
   } catch (error) {
     next(error);
   }
@@ -137,9 +202,80 @@ entitiesRouter.post("/entities", async (req, res, next) => {
   }
 });
 
+entitiesRouter.patch("/entities/id/:id", async (req, res, next) => {
+  try {
+    const body = updateEntitySchema.parse(req.body);
+
+    const existing = await prisma.entity.findUnique({
+      where: { id: req.params.id }
+    });
+
+    if (!existing) {
+      res.status(404).json({ message: "Entity not found." });
+      return;
+    }
+
+    const nextStatus = body.status ?? existing.status;
+
+    const updated = await prisma.entity.update({
+      where: { id: req.params.id },
+      data: {
+        title: body.title,
+        slug: body.slug ? slugify(body.slug) : undefined,
+        entityType: body.entityType,
+        shortDescription: body.shortDescription,
+        longDescription:
+          body.longDescription === undefined ? undefined : body.longDescription,
+        status: body.status,
+        visibility: body.visibility,
+        publishedAt:
+          !existing.publishedAt && nextStatus === EntityStatus.PUBLISHED
+            ? new Date()
+            : undefined
+      }
+    });
+
+    res.json(updated);
+  } catch (error) {
+    next(error);
+  }
+});
+
+entitiesRouter.delete("/entities/id/:id", async (req, res, next) => {
+  try {
+    const existing = await prisma.entity.findUnique({
+      where: { id: req.params.id },
+      select: { id: true }
+    });
+
+    if (!existing) {
+      res.status(404).json({ message: "Entity not found." });
+      return;
+    }
+
+    await prisma.entity.delete({
+      where: { id: req.params.id }
+    });
+
+    res.status(204).send();
+  } catch (error) {
+    next(error);
+  }
+});
+
 entitiesRouter.post("/entities/:entityId/sections", async (req, res, next) => {
   try {
     const body = createSectionSchema.parse(req.body);
+
+    const entity = await prisma.entity.findUnique({
+      where: { id: req.params.entityId },
+      select: { id: true }
+    });
+
+    if (!entity) {
+      res.status(404).json({ message: "Entity not found." });
+      return;
+    }
 
     const created = await prisma.entitySection.create({
       data: {
@@ -156,3 +292,66 @@ entitiesRouter.post("/entities/:entityId/sections", async (req, res, next) => {
     next(error);
   }
 });
+
+entitiesRouter.patch(
+  "/entities/:entityId/sections/:sectionId",
+  async (req, res, next) => {
+    try {
+      const body = updateSectionSchema.parse(req.body);
+
+      const section = await prisma.entitySection.findFirst({
+        where: {
+          id: req.params.sectionId,
+          entityId: req.params.entityId
+        }
+      });
+
+      if (!section) {
+        res.status(404).json({ message: "Section not found for this entity." });
+        return;
+      }
+
+      const updated = await prisma.entitySection.update({
+        where: { id: req.params.sectionId },
+        data: {
+          sectionType: body.sectionType,
+          title: body.title,
+          content: body.content,
+          sortOrder: body.sortOrder
+        }
+      });
+
+      res.json(updated);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+entitiesRouter.delete(
+  "/entities/:entityId/sections/:sectionId",
+  async (req, res, next) => {
+    try {
+      const section = await prisma.entitySection.findFirst({
+        where: {
+          id: req.params.sectionId,
+          entityId: req.params.entityId
+        },
+        select: { id: true }
+      });
+
+      if (!section) {
+        res.status(404).json({ message: "Section not found for this entity." });
+        return;
+      }
+
+      await prisma.entitySection.delete({
+        where: { id: req.params.sectionId }
+      });
+
+      res.status(204).send();
+    } catch (error) {
+      next(error);
+    }
+  }
+);

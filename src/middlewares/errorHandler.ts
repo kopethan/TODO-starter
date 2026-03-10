@@ -1,4 +1,5 @@
 import type { NextFunction, Request, Response } from "express";
+import { Prisma } from "../generated/prisma/client.js";
 import { ZodError } from "zod";
 
 export function errorHandler(
@@ -15,9 +16,33 @@ export function errorHandler(
     return;
   }
 
+  if (error instanceof Prisma.PrismaClientKnownRequestError) {
+    if (error.code === "P2002") {
+      res.status(409).json({
+        message: "A record with the same unique value already exists."
+      });
+      return;
+    }
+
+    if (error.code === "P2003") {
+      res.status(404).json({
+        message: "Related record not found or invalid reference provided."
+      });
+      return;
+    }
+
+    if (error.code === "P2025") {
+      res.status(404).json({
+        message: "Requested record was not found."
+      });
+      return;
+    }
+  }
+
   if (error instanceof Error) {
     res.status(500).json({
-      message: error.message
+      message: "Internal server error.",
+      ...(process.env.NODE_ENV !== "production" ? { error: error.message } : {})
     });
     return;
   }

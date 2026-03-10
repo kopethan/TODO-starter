@@ -37,6 +37,17 @@ const createReportSchema = z.object({
   isPublic: z.boolean().default(true)
 });
 
+const updateReportSchema = z
+  .object({
+    verificationState: z.nativeEnum(VerificationState).optional(),
+    moderationState: z.nativeEnum(ModerationState).optional(),
+    severityLevel: z.nativeEnum(SeverityLevel).optional(),
+    outcome: z.nativeEnum(ReportOutcome).optional()
+  })
+  .refine((value) => Object.keys(value).length > 0, {
+    message: "At least one field is required."
+  });
+
 reportsRouter.get("/reports", async (req, res, next) => {
   try {
     const query = listReportsQuerySchema.parse(req.query);
@@ -67,9 +78,46 @@ reportsRouter.get("/reports", async (req, res, next) => {
   }
 });
 
+reportsRouter.get("/reports/:id", async (req, res, next) => {
+  try {
+    const report = await prisma.experienceReport.findUnique({
+      where: { id: req.params.id },
+      include: {
+        entity: {
+          select: {
+            id: true,
+            title: true,
+            slug: true,
+            entityType: true
+          }
+        }
+      }
+    });
+
+    if (!report) {
+      res.status(404).json({ message: "Report not found." });
+      return;
+    }
+
+    res.json(report);
+  } catch (error) {
+    next(error);
+  }
+});
+
 reportsRouter.post("/reports", async (req, res, next) => {
   try {
     const body = createReportSchema.parse(req.body);
+
+    const entity = await prisma.entity.findUnique({
+      where: { id: body.entityId },
+      select: { id: true }
+    });
+
+    if (!entity) {
+      res.status(404).json({ message: "Entity not found." });
+      return;
+    }
 
     const created = await prisma.experienceReport.create({
       data: {
@@ -94,6 +142,36 @@ reportsRouter.post("/reports", async (req, res, next) => {
     });
 
     res.status(201).json(created);
+  } catch (error) {
+    next(error);
+  }
+});
+
+reportsRouter.patch("/reports/:id", async (req, res, next) => {
+  try {
+    const body = updateReportSchema.parse(req.body);
+
+    const existing = await prisma.experienceReport.findUnique({
+      where: { id: req.params.id },
+      select: { id: true }
+    });
+
+    if (!existing) {
+      res.status(404).json({ message: "Report not found." });
+      return;
+    }
+
+    const updated = await prisma.experienceReport.update({
+      where: { id: req.params.id },
+      data: {
+        verificationState: body.verificationState,
+        moderationState: body.moderationState,
+        severityLevel: body.severityLevel,
+        outcome: body.outcome
+      }
+    });
+
+    res.json(updated);
   } catch (error) {
     next(error);
   }
