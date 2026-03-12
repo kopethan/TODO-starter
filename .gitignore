@@ -1,6 +1,9 @@
 node_modules
 .env
-/dist
-/src/generated/prisma
 coverage
 .DS_Store
+apps/*/node_modules
+apps/*/.next
+apps/*/.env.local
+apps/*/dist
+apps/api/src/generated/prisma

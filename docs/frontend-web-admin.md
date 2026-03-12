@@ -1,24 +1,24 @@
 # Frontend web/admin starter notes
 
 ## App split
-TODO uses two shells:
-- **public web** for reading and understanding
-- **admin web** for managing facts and moderating claims
+TODO now uses two separate Next.js apps:
+- **public web** in `apps/web` for reading and understanding
+- **admin web** in `apps/admin` for managing facts and moderating claims
 
-They share the same design language but should not feel like the same type of product surface.
+They share the same design language through `packages/ui`, but they no longer live inside the same app tree.
 
 ## V1 routes
-### Public
+### Public web (`apps/web`)
 - `/`
 - `/entities/[slug]`
 - `/reports`
 
-### Admin
-- `/admin/entities`
-- `/admin/entities/new`
-- `/admin/entities/[id]`
-- `/admin/reports`
-- `/admin/reports/[id]`
+### Admin web (`apps/admin`)
+- `/entities`
+- `/entities/new`
+- `/entities/[id]`
+- `/reports`
+- `/reports/[id]`
 
 ## V1 scope
 Only ship the flows that keep TODO operational:

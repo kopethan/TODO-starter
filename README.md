@@ -1,136 +1,103 @@
-# TODO Backend Starter
+# TODO Platform Monorepo
 
-Starter backend for **TODO**, your trust-aware decision platform.
+This repository is organized around separate apps for the API, the public web experience, and the admin workspace.
 
-This base project is built around four ideas:
-- **Entities**: objects, services, situations, scam patterns, brands, concepts
-- **Structured knowledge**: each entity uses reusable sections like definition, normal process, dangers, red flags, and what to do
-- **Experience reports**: users can submit what happened to them in a structured way
-- **Patterns + history**: repeated reports can later become AI-assisted pattern cards and timeline events
+## Repository layout
 
-## Stack
-- Node.js + TypeScript
-- Express
-- Prisma ORM
-- PostgreSQL
-- Zod validation
-
-## Current scope
-The starter already includes:
-- Prisma schema for the core TODO data model
-- Prisma config for PostgreSQL
-- reusable Prisma client setup
-- a seed file with sample entities, sections, trust data, one scam report, and one early pattern
-- minimal REST routes for health, entities, and reports
-- documentation in the `docs/` folder
-- `admin-ui/`, a separate Next.js web app starter for the public web shell and first admin workspace
-
-## Project structure
 ```text
-TODO-backend-starter/
-├── admin-ui/
+TODO/
+├── apps/
+│   ├── api/
+│   ├── web/
+│   ├── admin/
+│   └── mobile/
 ├── docs/
-├── prisma/
-│   ├── schema.prisma
-│   └── seed.ts
-├── src/
+├── packages/
+│   ├── api-client/
 │   ├── config/
-│   ├── generated/
-│   ├── lib/
-│   ├── middlewares/
-│   ├── routes/
-│   ├── utils/
-│   ├── app.ts
-│   └── server.ts
+│   ├── types/
+│   └── ui/
 ├── .env.example
 ├── package.json
-├── prisma.config.ts
-├── README.md
-└── tsconfig.json
+└── README.md
 ```
+
+## Apps
+
+- `apps/api`: Express + Prisma backend.
+- `apps/web`: public-facing web app only.
+- `apps/admin`: admin workspace only.
+- `apps/mobile`: placeholder for the future mobile client.
+
+## Packages
+
+- `packages/ui`: shared UI primitives, badges, providers, and formatting helpers.
+- `packages/types`: shared frontend DTOs and enum arrays.
+- `packages/api-client`: shared `apiRequest()` helper.
+- `packages/config`: shared TypeScript base configs.
 
 ## Quick start
-1. Copy the environment file.
-```bash
-cp .env.example .env
-```
 
-2. Install dependencies.
+### 1. Install workspace dependencies
+
 ```bash
 npm install
 ```
 
-3. Generate the Prisma client.
+### 2. Configure env files
+
+API:
+```bash
+cp apps/api/.env.example apps/api/.env
+```
+
+Public web:
+```bash
+cp apps/web/.env.example apps/web/.env.local
+```
+
+Admin web:
+```bash
+cp apps/admin/.env.example apps/admin/.env.local
+```
+
+### 3. Generate Prisma client and migrate the database
+
 ```bash
 npm run prisma:generate
-```
-
-4. Create the first migration.
-```bash
 npm run prisma:migrate -- --name init_todo_core
-```
-
-5. Seed the database.
-```bash
 npm run db:seed
 ```
 
-6. Start the API in development mode.
+### 4. Run the apps
+
+API:
 ```bash
-npm run dev
+npm run dev:api
 ```
 
-The API will be available at:
-```text
-http://localhost:4000/api
-```
-
-## Web app starter
-A separate web app now lives in `admin-ui/`.
-
-### Included routes
-#### Public
-- `/`
-- `/entities/[slug]`
-- `/reports`
-
-#### Admin
-- `/admin/entities`
-- `/admin/entities/new`
-- `/admin/entities/[id]`
-- `/admin/reports`
-- `/admin/reports/[id]`
-
-### Run the web app
+Public web:
 ```bash
-cd admin-ui
-cp .env.example .env.local
-npm install
-npm run dev
+npm run dev:web
 ```
 
-Default API target:
-```text
-NEXT_PUBLIC_API_BASE_URL=http://localhost:4000/api
+Admin web:
+```bash
+npm run dev:admin
 ```
 
-## Available API routes
-### Health
-- `GET /api/health`
+Default local URLs:
+- API: `http://localhost:4000/api`
+- Public web: `http://localhost:3000`
+- Admin web: `http://localhost:3001`
 
-### Entities
-- `GET /api/entities`
-- `GET /api/entities/id/:id`
-- `GET /api/entities/:slug`
-- `POST /api/entities`
-- `PATCH /api/entities/id/:id`
-- `DELETE /api/entities/id/:id`
-- `POST /api/entities/:entityId/sections`
-- `PATCH /api/entities/:entityId/sections/:sectionId`
-- `DELETE /api/entities/:entityId/sections/:sectionId`
+## Why this structure is better
 
-### Reports
-- `GET /api/reports`
-- `GET /api/reports/:id`
-- `POST /api/reports`
-- `PATCH /api/reports/:id`
+- The public site and the admin UI no longer live inside the same Next.js app.
+- The admin UI can be deployed behind a separate internal domain or auth wall.
+- Shared UI, frontend types, and API helpers now live in reusable packages.
+- The future mobile app has a clear place in the repo.
+
+## Security note
+
+The repo split removes the old public/admin route coupling. You should still add real authentication and authorization before shipping the admin app to production.

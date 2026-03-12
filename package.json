@@ -1,37 +1,21 @@
 {
-  "name": "todo-backend-starter",
-  "version": "0.1.0",
+  "name": "todo-platform",
+  "version": "0.2.0",
   "private": true,
-  "type": "module",
-  "description": "Starter backend for TODO: trust-aware decision platform with Prisma, Express, and PostgreSQL.",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "description": "TODO monorepo with separate API, public web, admin web, and a future mobile app.",
   "scripts": {
-    "dev": "tsx watch src/server.ts",
-    "build": "tsc -p tsconfig.json",
-    "start": "node dist/src/server.js",
-    "typecheck": "tsc --noEmit",
-    "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate dev",
-    "prisma:studio": "prisma studio",
-    "db:seed": "tsx prisma/seed.ts"
-  },
-  "prisma": {
-    "seed": "tsx prisma/seed.ts"
-  },
-  "dependencies": {
-    "@prisma/adapter-pg": "^7.0.0",
-    "@prisma/client": "^7.0.0",
-    "cors": "^2.8.5",
-    "dotenv": "^17.0.0",
-    "express": "^5.1.0",
-    "pg": "^8.16.0",
-    "zod": "^3.25.0"
-  },
-  "devDependencies": {
-    "@types/cors": "^2.8.17",
-    "@types/express": "^5.0.3",
-    "@types/node": "^24.0.0",
-    "prisma": "^7.0.0",
-    "tsx": "^4.20.0",
-    "typescript": "^5.9.0"
+    "dev:api": "npm run dev --workspace @todo/api",
+    "dev:web": "npm run dev --workspace @todo/web",
+    "dev:admin": "npm run dev --workspace @todo/admin",
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "prisma:generate": "npm run prisma:generate --workspace @todo/api",
+    "prisma:migrate": "npm run prisma:migrate --workspace @todo/api --",
+    "prisma:studio": "npm run prisma:studio --workspace @todo/api",
+    "db:seed": "npm run db:seed --workspace @todo/api"
   }
 }
