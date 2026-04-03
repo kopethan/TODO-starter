@@ -1,10 +1,8 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
 import { QueryProvider, ThemeProvider } from "@todo/ui";
 import { AdminShell } from "@/components/layout/admin-shell";
+import { ToastProvider } from "@/components/shared/toast-provider";
 import "./globals.css";
-
-const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "TODO Admin",
@@ -14,10 +12,12 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={inter.className}>
+      <body className="font-sans antialiased">
         <ThemeProvider>
           <QueryProvider>
-            <AdminShell>{children}</AdminShell>
+            <ToastProvider>
+              <AdminShell>{children}</AdminShell>
+            </ToastProvider>
           </QueryProvider>
         </ThemeProvider>
       </body>

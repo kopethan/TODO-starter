@@ -15,14 +15,14 @@ export class ApiError extends Error {
 export async function apiRequest<T>(
   path: string,
   init?: RequestInit,
-  params?: Record<string, string | undefined>
+  params?: Record<string, string | number | undefined>
 ) {
   const url = new URL(`${API_BASE_URL}${path}`);
 
   if (params) {
     Object.entries(params).forEach(([key, value]) => {
-      if (value) {
-        url.searchParams.set(key, value);
+      if (value !== undefined && value !== "") {
+        url.searchParams.set(key, String(value));
       }
     });
   }

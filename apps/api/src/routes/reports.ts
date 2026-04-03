@@ -10,6 +10,7 @@ import {
 } from "../generated/prisma/enums.js";
 import { prisma } from "../lib/prisma.js";
 import { omitUndefined } from "../utils/omit-undefined.js";
+import { DEFAULT_PAGE, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, getPagination } from "../utils/pagination.js";
 
 export const reportsRouter = Router();
 
@@ -17,7 +18,10 @@ const listReportsQuerySchema = z.object({
   entityId: z.string().optional(),
   reportType: z.nativeEnum(ReportType).optional(),
   moderationState: z.nativeEnum(ModerationState).optional(),
-  verificationState: z.nativeEnum(VerificationState).optional()
+  verificationState: z.nativeEnum(VerificationState).optional(),
+  q: z.string().trim().min(1).optional(),
+  page: z.coerce.number().int().min(1).default(DEFAULT_PAGE),
+  pageSize: z.coerce.number().int().min(1).max(MAX_PAGE_SIZE).default(DEFAULT_PAGE_SIZE)
 });
 
 const createReportSchema = z.object({
@@ -53,14 +57,38 @@ reportsRouter.get("/reports", async (req, res, next) => {
   try {
     const query: z.infer<typeof listReportsQuerySchema> = listReportsQuerySchema.parse(req.query);
 
-    const reports = await prisma.experienceReport.findMany({
-      where: omitUndefined({
+    const where = {
+      ...omitUndefined({
         entityId: query.entityId,
         reportType: query.reportType,
         moderationState: query.moderationState,
         verificationState: query.verificationState
       }),
+      ...(query.q
+        ? {
+            OR: [
+              { title: { contains: query.q, mode: "insensitive" as const } },
+              { narrative: { contains: query.q, mode: "insensitive" as const } },
+              {
+                entity: {
+                  is: {
+                    title: { contains: query.q, mode: "insensitive" as const }
+                  }
+                }
+              }
+            ]
+          }
+        : {})
+    };
+
+    const totalItems = await prisma.experienceReport.count({ where });
+    const pagination = getPagination(query.page, query.pageSize, totalItems);
+
+    const items = await prisma.experienceReport.findMany({
+      where,
       orderBy: { reportedAt: "desc" },
+      skip: pagination.skip,
+      take: pagination.take,
       include: {
         entity: {
           select: {
@@ -73,7 +101,15 @@ reportsRouter.get("/reports", async (req, res, next) => {
       }
     });
 
-    res.json(reports);
+    res.json({
+      items,
+      page: pagination.page,
+      pageSize: pagination.pageSize,
+      totalItems: pagination.totalItems,
+      totalPages: pagination.totalPages,
+      hasNextPage: pagination.hasNextPage,
+      hasPreviousPage: pagination.hasPreviousPage
+    });
   } catch (error) {
     next(error);
   }

@@ -8,11 +8,11 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
     <button
       ref={ref}
       className={cn(
-        "inline-flex h-10 items-center justify-center rounded-2xl px-4 text-sm font-medium shadow-[var(--button-secondary-shadow)] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-500)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-app)] disabled:cursor-not-allowed disabled:opacity-60",
-        variant === "primary" && "bg-[var(--button-primary-bg)] text-[var(--button-primary-text)] shadow-[0_12px_24px_rgba(15,23,32,0.16)] hover:bg-[var(--button-primary-hover)] dark:shadow-[0_14px_28px_rgba(0,0,0,0.32)]",
-        variant === "secondary" && "bg-[var(--button-secondary-bg)] text-[var(--button-secondary-text)] hover:bg-[var(--button-secondary-hover)]",
-        variant === "ghost" && "bg-transparent text-[var(--text-primary)] shadow-none hover:bg-[color-mix(in_srgb,var(--bg-surface-muted)_85%,transparent)]",
-        variant === "danger" && "bg-[var(--danger-bg)] text-[var(--danger-text)] shadow-none hover:opacity-90",
+        "inline-flex h-10 items-center justify-center rounded-lg border px-4 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-500)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-app)] disabled:cursor-not-allowed disabled:opacity-60",
+        variant === "primary" && "border-[var(--button-primary-bg)] bg-[var(--button-primary-bg)] text-[var(--button-primary-text)] hover:bg-[var(--button-primary-hover)]",
+        variant === "secondary" && "border-[var(--border-default)] bg-[var(--button-secondary-bg)] text-[var(--button-secondary-text)] hover:bg-[var(--button-secondary-hover)]",
+        variant === "ghost" && "border-transparent bg-transparent text-[var(--text-primary)] hover:bg-[var(--bg-surface-muted)]",
+        variant === "danger" && "border-[var(--danger-border)] bg-[var(--danger-bg)] text-[var(--danger-text)] hover:opacity-90",
         className
       )}
       {...props}

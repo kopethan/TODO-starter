@@ -1,46 +1,76 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Card, PageHeader } from "@todo/ui";
+import { Button, PageHeader } from "@todo/ui";
+import { KeyValueList } from "@/components/shared/key-value-list";
+import { PageSection } from "@/components/shared/page-section";
+import { useToast } from "@/components/shared/toast-provider";
 import { EntityForm } from "@/features/entities/form";
-import { useCreateEntity, type EntityFormInput } from "@/features/entities";
-
-const defaults: EntityFormInput = {
-  title: "",
-  slug: "",
-  entityType: "OBJECT",
-  shortDescription: "",
-  longDescription: "",
-  status: "DRAFT",
-  visibility: "PUBLIC"
-};
+import { useCreateEntity } from "@/features/entities";
 
 export default function NewEntityPage() {
   const router = useRouter();
-  const mutation = useCreateEntity();
+  const createEntity = useCreateEntity();
+  const { pushToast } = useToast();
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
-      <div>
-        <PageHeader title="New entity" subtitle="Create a canonical page for an object, service, or situation." />
+    <div className="space-y-6">
+      <PageHeader
+        title="New entity"
+        subtitle="Create the canonical record before sections, reports, and future source links are attached."
+        actions={
+          <Link href="/entities">
+            <Button variant="secondary">Back to entities</Button>
+          </Link>
+        }
+      />
+
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
         <EntityForm
-          initialValues={defaults}
+          initialValues={{
+            title: "",
+            slug: "",
+            entityType: "SERVICE",
+            shortDescription: "",
+            longDescription: "",
+            status: "DRAFT",
+            visibility: "PUBLIC"
+          }}
           submitLabel="Create entity"
-          loading={mutation.isPending}
+          loading={createEntity.isPending}
           onSubmit={async (values) => {
-            const created = await mutation.mutateAsync(values);
-            router.push(`/entities/${created.id}`);
+            try {
+              const created = await createEntity.mutateAsync(values);
+              pushToast({
+                tone: "success",
+                title: "Entity created",
+                description: `${created.title} is ready for section editing and moderation context.`
+              });
+              router.push(`/entities/${created.id}`);
+            } catch (error) {
+              pushToast({
+                tone: "danger",
+                title: "Could not create entity",
+                description: error instanceof Error ? error.message : "The request failed before the canonical record could be created."
+              });
+              throw error;
+            }
           }}
         />
+
+        <div className="space-y-6">
+          <PageSection title="Publishing notes" description="Quiet defaults are safer for V1.">
+            <KeyValueList
+              items={[
+                { label: "Draft first", value: "Start as Draft unless the record is already reviewed and complete." },
+                { label: "Short description", value: "Use one factual paragraph. Avoid promotional or emotional language." },
+                { label: "Visibility", value: "Keep Private or Hidden for unfinished or internal-only records." }
+              ]}
+            />
+          </PageSection>
+        </div>
       </div>
-      <Card className="h-fit p-5">
-        <h2 className="text-base font-semibold">Publishing notes</h2>
-        <ul className="mt-3 space-y-2 text-sm text-[var(--text-secondary)]">
-          <li>Start as draft until the page structure is stable.</li>
-          <li>Keep the slug steady once the entity becomes public.</li>
-          <li>Use sections to separate facts, risks, and guidance.</li>
-        </ul>
-      </Card>
     </div>
   );
 }

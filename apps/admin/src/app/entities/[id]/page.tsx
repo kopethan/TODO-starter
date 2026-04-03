@@ -1,104 +1,291 @@
 "use client";
 
-import { useState } from "react";
-import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm } from "react-hook-form";
-import { z } from "zod";
-import { Button, Card, Dialog, EntityStatusBadge, ModerationBadge, PageHeader, Select, SeverityBadge, Tabs, Textarea, VerificationBadge, VisibilityBadge, Input, formatDate, formatEnum } from "@todo/ui";
-import { sectionTypes } from "@todo/types";
+import { useMemo, useState } from "react";
+import { useParams } from "next/navigation";
+import { Button, Dialog, EntityStatusBadge, EntityTypeBadge, PageHeader, VisibilityBadge, formatDate, formatEnum } from "@todo/ui";
+import { type EntitySection, sectionTypes } from "@todo/types";
+import { EmptyState } from "@/components/shared/empty-state";
+import { KeyValueList } from "@/components/shared/key-value-list";
+import { PageSection } from "@/components/shared/page-section";
+import { StatGrid } from "@/components/shared/stat-grid";
+import { useToast } from "@/components/shared/toast-provider";
 import { EntityForm } from "@/features/entities/form";
-import { useCreateSection, useDeleteEntity, useDeleteSection, useEntity, useUpdateEntity, useUpdateSection, type SectionFormInput, type EntitySection } from "@/features/entities";
+import { EntitySectionForm } from "@/features/entities/section-form";
+import { useCreateSection, useDeleteSection, useEntity, useUpdateEntity, useUpdateSection } from "@/features/entities";
 import { useReports } from "@/features/reports";
 
-const sectionSchema = z.object({
-  sectionType: z.enum(sectionTypes),
-  title: z.string().min(2),
-  content: z.string().min(10),
-  sortOrder: z.coerce.number().int().nonnegative()
-});
-
-const emptySection: SectionFormInput = { sectionType: "DEFINITION", title: "", content: "", sortOrder: 0 };
+const emptySection = {
+  sectionType: sectionTypes[0],
+  title: "",
+  content: "",
+  sortOrder: 0
+} as const;
 
 export default function EntityDetailPage() {
   const params = useParams<{ id: string }>();
-  const router = useRouter();
-  const entity = useEntity(params.id);
-  const updateEntity = useUpdateEntity(params.id);
-  const deleteEntity = useDeleteEntity(params.id);
-  const createSection = useCreateSection(params.id);
-  const [tab, setTab] = useState("overview");
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editing, setEditing] = useState<EntitySection | null>(null);
-  const reports = useReports({ entityId: params.id });
+  const id = String(params.id);
+  const entity = useEntity(id);
+  const updateEntity = useUpdateEntity(id);
+  const createSection = useCreateSection(id);
+  const updateSection = useUpdateSection(id);
+  const deleteSection = useDeleteSection(id);
+  const reports = useReports({ entityId: id, page: "1", pageSize: "6" });
+  const { pushToast } = useToast();
+  const [editingSection, setEditingSection] = useState<EntitySection | null>(null);
+  const [sectionDialogOpen, setSectionDialogOpen] = useState(false);
 
-  const updateSection = useUpdateSection(params.id, editing?.id ?? "");
+  const visibleReports = useMemo(() => reports.data?.items ?? [], [reports.data]);
 
-  if (entity.isLoading) return <div>Loading entity...</div>;
-  if (!entity.data) return <div>Entity not found.</div>;
+  if (entity.isLoading) {
+    return <p className="text-sm text-[var(--text-secondary)]">Loading entity…</p>;
+  }
+
+  if (entity.error || !entity.data) {
+    return <p className="text-sm text-[var(--danger-text)]">{entity.error?.message ?? "Entity not found."}</p>;
+  }
+
+  const record = entity.data;
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
-      <div>
-        <PageHeader
-          title={entity.data.title}
-          subtitle="Manage canonical content and structured sections."
-          actions={
-            <>
-              <EntityStatusBadge value={entity.data.status} />
-              <VisibilityBadge value={entity.data.visibility} />
-              <Button variant="danger" onClick={async () => { await deleteEntity.mutateAsync(); router.push('/entities'); }}>Delete</Button>
-            </>
-          }
-        />
-        <div className="mb-5"><Tabs tabs={[{ value: "overview", label: "Overview" }, { value: "sections", label: "Sections" }, { value: "reports", label: "Reports" }]} value={tab} onChange={setTab} /></div>
-        {tab === "overview" ? (
-          <EntityForm initialValues={{ title: entity.data.title, slug: entity.data.slug, entityType: entity.data.entityType, shortDescription: entity.data.shortDescription, longDescription: entity.data.longDescription ?? "", status: entity.data.status, visibility: entity.data.visibility }} submitLabel="Save changes" loading={updateEntity.isPending} onSubmit={async (values) => { await updateEntity.mutateAsync(values); }} />
-        ) : null}
-        {tab === "sections" ? (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between"><div><h2 className="text-base font-semibold">Sections</h2><p className="text-sm text-[var(--text-secondary)]">Maintain ordered sections for facts, risks, and guidance.</p></div><Button variant="primary" onClick={() => { setEditing(null); setDialogOpen(true); }}>Add section</Button></div>
-            {entity.data.sections.sort((a, b) => a.sortOrder - b.sortOrder).map((section) => <SectionRow key={section.id} entityId={params.id} section={section} onEdit={() => { setEditing(section); setDialogOpen(true); }} />)}
-          </div>
-        ) : null}
-        {tab === "reports" ? (
-          <Card className="overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-[var(--border-default)] text-sm">
-                <thead className="bg-[var(--bg-surface-muted)] text-left text-[var(--text-secondary)]"><tr><th className="px-4 py-3 font-medium">Title</th><th className="px-4 py-3 font-medium">Type</th><th className="px-4 py-3 font-medium">Severity</th><th className="px-4 py-3 font-medium">Verification</th><th className="px-4 py-3 font-medium">Moderation</th></tr></thead>
-                <tbody className="divide-y divide-[var(--border-default)]">{(reports.data ?? []).map((report) => <tr key={report.id} className="hover:bg-[var(--bg-surface-muted)]"><td className="px-4 py-3"><Link href={`/reports/${report.id}`} className="font-medium hover:underline">{report.title}</Link></td><td className="px-4 py-3 text-[var(--text-secondary)]">{formatEnum(report.reportType)}</td><td className="px-4 py-3"><SeverityBadge value={report.severityLevel} /></td><td className="px-4 py-3"><VerificationBadge value={report.verificationState} /></td><td className="px-4 py-3"><ModerationBadge value={report.moderationState} /></td></tr>)}</tbody>
-              </table>
+    <div className="space-y-6">
+      <PageHeader
+        title={record.title}
+        subtitle="Canonical record editing for identity, explanatory copy, and structured sections."
+        actions={
+          <>
+            <Link href="/entities">
+              <Button variant="secondary">Back to entities</Button>
+            </Link>
+            <Link href={`/reports?entityId=${record.id}`}>
+              <Button variant="ghost">View reports</Button>
+            </Link>
+          </>
+        }
+      />
+
+      <StatGrid
+        items={[
+          { label: "Entity type", value: <EntityTypeBadge value={record.entityType} /> },
+          { label: "Status", value: <EntityStatusBadge value={record.status} /> },
+          { label: "Visibility", value: <VisibilityBadge value={record.visibility} /> },
+          { label: "Reports", value: String(record._count?.reports ?? 0), hint: "Experience reports linked to this entity." }
+        ]}
+      />
+
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="space-y-6">
+          <EntityForm
+            initialValues={{
+              title: record.title,
+              slug: record.slug,
+              entityType: record.entityType,
+              shortDescription: record.shortDescription,
+              longDescription: record.longDescription ?? "",
+              status: record.status,
+              visibility: record.visibility
+            }}
+            submitLabel="Save entity"
+            loading={updateEntity.isPending}
+            onSubmit={async (values) => {
+              try {
+                const updated = await updateEntity.mutateAsync(values);
+                pushToast({
+                  tone: "success",
+                  title: "Entity saved",
+                  description: `${updated.title} has been updated.`
+                });
+              } catch (error) {
+                pushToast({
+                  tone: "danger",
+                  title: "Could not save entity",
+                  description: error instanceof Error ? error.message : "The entity changes were not saved."
+                });
+                throw error;
+              }
+            }}
+          />
+
+          <PageSection
+            title="Entity sections"
+            description="Structured explanation blocks such as definition, normal process, dangers, and red flags."
+            action={
+              <Button
+                variant="primary"
+                onClick={() => {
+                  setEditingSection(null);
+                  setSectionDialogOpen(true);
+                }}
+              >
+                Add section
+              </Button>
+            }
+          >
+            <div className="space-y-4">
+              {record.sections.length === 0 ? (
+                <EmptyState
+                  title="No sections yet"
+                  description="Add the first section to describe how this entity normally works, where risk appears, and what users should watch for."
+                  actionLabel="Add first section"
+                  onAction={() => {
+                    setEditingSection(null);
+                    setSectionDialogOpen(true);
+                  }}
+                />
+              ) : (
+                record.sections.map((section) => (
+                  <div key={section.id} className="rounded-xl border border-[var(--border-default)] p-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <p className="text-xs font-medium uppercase tracking-[0.16em] text-[var(--text-muted)]">
+                          {formatEnum(section.sectionType)} · Order {section.sortOrder}
+                        </p>
+                        <h3 className="mt-1 text-base font-semibold">{section.title}</h3>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="secondary"
+                          onClick={() => {
+                            setEditingSection(section);
+                            setSectionDialogOpen(true);
+                          }}
+                        >
+                          Edit
+                        </Button>
+                        <Button
+                          variant="danger"
+                          onClick={async () => {
+                            if (!window.confirm(`Delete section "${section.title}"?`)) {
+                              return;
+                            }
+
+                            try {
+                              await deleteSection.mutateAsync(section.id);
+                              if (editingSection?.id === section.id) {
+                                setEditingSection(null);
+                              }
+                              pushToast({
+                                tone: "success",
+                                title: "Section deleted",
+                                description: `${section.title} has been removed from this entity.`
+                              });
+                            } catch (error) {
+                              pushToast({
+                                tone: "danger",
+                                title: "Could not delete section",
+                                description: error instanceof Error ? error.message : "The section could not be removed."
+                              });
+                            }
+                          }}
+                        >
+                          Delete
+                        </Button>
+                      </div>
+                    </div>
+                    <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-[var(--text-secondary)]">{section.content}</p>
+                  </div>
+                ))
+              )}
             </div>
-          </Card>
-        ) : null}
+          </PageSection>
+
+          <PageSection title="Linked reports" description="Recent experience reports for moderation or cross-checking.">
+            {reports.isLoading ? (
+              <p className="text-sm text-[var(--text-secondary)]">Loading reports…</p>
+            ) : visibleReports.length === 0 ? (
+              <EmptyState title="No reports linked" description="This entity does not have any related experience reports yet." />
+            ) : (
+              <div className="space-y-3">
+                {visibleReports.map((report) => (
+                  <Link
+                    key={report.id}
+                    href={`/reports/${report.id}`}
+                    className="block rounded-xl border border-[var(--border-default)] p-4 transition hover:bg-[var(--bg-surface-muted)]"
+                  >
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-sm font-semibold">{report.title}</span>
+                      <span className="text-xs text-[var(--text-muted)]">{formatEnum(report.reportType)}</span>
+                    </div>
+                    <p className="mt-2 line-clamp-3 text-sm text-[var(--text-secondary)]">{report.narrative}</p>
+                    <p className="mt-2 text-xs text-[var(--text-muted)]">Reported {formatDate(report.reportedAt)}</p>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </PageSection>
+        </div>
+
+        <div className="space-y-6">
+          <PageSection title="Record metadata" description="Useful reference information while editing.">
+            <KeyValueList
+              items={[
+                { label: "Slug", value: record.slug },
+                { label: "Created", value: formatDate(record.createdAt) },
+                { label: "Updated", value: formatDate(record.updatedAt) },
+                { label: "Trust factual confidence", value: record.trustStatus?.factualConfidence ?? "—" },
+                { label: "Community signal", value: record.trustStatus?.communitySignalStrength ?? "—" },
+                { label: "Moderation confidence", value: record.trustStatus?.moderationConfidence ?? "—" }
+              ]}
+            />
+          </PageSection>
+        </div>
       </div>
-      <Card className="h-fit p-5">
-        <h2 className="text-base font-semibold">Metadata</h2>
-        <dl className="mt-4 space-y-4 text-sm">
-          <div><dt className="text-[var(--text-muted)]">Slug</dt><dd className="mt-1">{entity.data.slug}</dd></div>
-          <div><dt className="text-[var(--text-muted)]">Created</dt><dd className="mt-1">{formatDate(entity.data.createdAt)}</dd></div>
-          <div><dt className="text-[var(--text-muted)]">Updated</dt><dd className="mt-1">{formatDate(entity.data.updatedAt)}</dd></div>
-          <div><dt className="text-[var(--text-muted)]">Sections</dt><dd className="mt-1">{entity.data.sections.length}</dd></div>
-          <div><dt className="text-[var(--text-muted)]">Reports</dt><dd className="mt-1">{entity.data._count?.reports ?? 0}</dd></div>
-        </dl>
-      </Card>
-      <Dialog open={dialogOpen} title={editing ? "Edit section" : "Add section"} onClose={() => setDialogOpen(false)}>
-        <SectionEditorForm entityId={params.id} initialValues={editing ? { sectionType: editing.sectionType, title: editing.title, content: editing.content, sortOrder: editing.sortOrder } : emptySection} submitLabel={editing ? "Save section" : "Create section"} onSubmit={async (values) => { if (editing) { await updateSection.mutateAsync(values); } else { await createSection.mutateAsync(values); } setDialogOpen(false); }} />
+
+      <Dialog
+        open={sectionDialogOpen}
+        title={editingSection ? "Edit section" : "Add section"}
+        onClose={() => {
+          setSectionDialogOpen(false);
+          setEditingSection(null);
+        }}
+      >
+        <EntitySectionForm
+          initialValues={
+            editingSection
+              ? {
+                  sectionType: editingSection.sectionType,
+                  title: editingSection.title,
+                  content: editingSection.content,
+                  sortOrder: editingSection.sortOrder
+                }
+              : { ...emptySection }
+          }
+          submitLabel={editingSection ? "Save section" : "Create section"}
+          loading={createSection.isPending || updateSection.isPending || deleteSection.isPending}
+          onCancel={() => {
+            setSectionDialogOpen(false);
+            setEditingSection(null);
+          }}
+          onSubmit={async (values) => {
+            try {
+              if (editingSection) {
+                await updateSection.mutateAsync({ sectionId: editingSection.id, payload: values });
+                pushToast({
+                  tone: "success",
+                  title: "Section updated",
+                  description: `${values.title} has been saved.`
+                });
+              } else {
+                await createSection.mutateAsync(values);
+                pushToast({
+                  tone: "success",
+                  title: "Section created",
+                  description: `${values.title} has been added to this entity.`
+                });
+              }
+              setSectionDialogOpen(false);
+              setEditingSection(null);
+            } catch (error) {
+              pushToast({
+                tone: "danger",
+                title: editingSection ? "Could not save section" : "Could not create section",
+                description: error instanceof Error ? error.message : "The section request failed."
+              });
+              throw error;
+            }
+          }}
+        />
       </Dialog>
     </div>
   );
 }
-
-function SectionRow({ entityId, section, onEdit }: { entityId: string; section: EntitySection; onEdit: () => void }) {
-  const remove = useDeleteSection(entityId, section.id);
-  return <Card className="p-4"><div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between"><div><div className="flex flex-wrap items-center gap-2"><h3 className="font-medium">{section.title}</h3><span className="rounded-full bg-[var(--theme-tint)] px-2.5 py-1 text-xs font-medium">{formatEnum(section.sectionType)}</span></div><p className="mt-2 line-clamp-3 text-sm text-[var(--text-secondary)]">{section.content}</p></div><div className="flex items-center gap-2"><span className="text-xs text-[var(--text-muted)]">Order {section.sortOrder}</span><Button onClick={onEdit}>Edit</Button><Button variant="danger" onClick={() => remove.mutate()} disabled={remove.isPending}>Delete</Button></div></div></Card>;
-}
-
-function SectionEditorForm({ entityId, initialValues, submitLabel, onSubmit }: { entityId: string; initialValues: SectionFormInput; submitLabel: string; onSubmit: (values: SectionFormInput) => Promise<void> }) {
-  const form = useForm<SectionFormInput>({ resolver: zodResolver(sectionSchema), defaultValues: initialValues });
-  const { register, handleSubmit, formState: { errors } } = form;
-  return <form className="space-y-4" onSubmit={handleSubmit(async (values) => onSubmit(values))}><div className="grid gap-4 md:grid-cols-2"><Field label="Title" error={errors.title?.message}><Input {...register('title')} /></Field><Field label="Section type" error={errors.sectionType?.message}><Select {...register('sectionType')}>{sectionTypes.map((v) => <option key={v} value={v}>{formatEnum(v)}</option>)}</Select></Field><Field label="Sort order" error={errors.sortOrder?.message}><Input type="number" min={0} {...register('sortOrder')} /></Field></div><Field label="Content" error={errors.content?.message}><Textarea className="min-h-40" {...register('content')} /></Field><div className="flex justify-end"><Button type="submit" variant="primary">{submitLabel}</Button></div></form>;
-}
-
-function Field({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) { return <div><label className="mb-2 block text-sm font-medium">{label}</label>{children}{error ? <p className="mt-1 text-sm text-[var(--danger-text)]">{error}</p> : null}</div>; }

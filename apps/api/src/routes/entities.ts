@@ -8,6 +8,7 @@ import {
 } from "../generated/prisma/enums.js";
 import { prisma } from "../lib/prisma.js";
 import { omitUndefined } from "../utils/omit-undefined.js";
+import { DEFAULT_PAGE, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, getPagination } from "../utils/pagination.js";
 import { slugify } from "../utils/slugify.js";
 
 export const entitiesRouter = Router();
@@ -16,7 +17,9 @@ const listEntitiesQuerySchema = z.object({
   type: z.nativeEnum(EntityType).optional(),
   status: z.nativeEnum(EntityStatus).optional(),
   visibility: z.nativeEnum(Visibility).optional(),
-  q: z.string().trim().min(1).optional()
+  q: z.string().trim().min(1).optional(),
+  page: z.coerce.number().int().min(1).default(DEFAULT_PAGE),
+  pageSize: z.coerce.number().int().min(1).max(MAX_PAGE_SIZE).default(DEFAULT_PAGE_SIZE)
 });
 
 const createEntitySchema = z.object({
@@ -65,19 +68,26 @@ entitiesRouter.get("/entities", async (req, res, next) => {
   try {
     const query: z.infer<typeof listEntitiesQuerySchema> = listEntitiesQuerySchema.parse(req.query);
 
-    const entities = await prisma.entity.findMany({
-      where: omitUndefined({
-        entityType: query.type,
-        status: query.status,
-        visibility: query.visibility,
-        OR: query.q
-          ? [
-              { title: { contains: query.q, mode: "insensitive" as const } },
-              { shortDescription: { contains: query.q, mode: "insensitive" as const } }
-            ]
-          : undefined
-      }),
+    const where = omitUndefined({
+      entityType: query.type,
+      status: query.status,
+      visibility: query.visibility,
+      OR: query.q
+        ? [
+            { title: { contains: query.q, mode: "insensitive" as const } },
+            { shortDescription: { contains: query.q, mode: "insensitive" as const } }
+          ]
+        : undefined
+    });
+
+    const totalItems = await prisma.entity.count({ where });
+    const pagination = getPagination(query.page, query.pageSize, totalItems);
+
+    const items = await prisma.entity.findMany({
+      where,
       orderBy: { updatedAt: "desc" },
+      skip: pagination.skip,
+      take: pagination.take,
       include: {
         categories: {
           include: {
@@ -93,7 +103,15 @@ entitiesRouter.get("/entities", async (req, res, next) => {
       }
     });
 
-    res.json(entities);
+    res.json({
+      items,
+      page: pagination.page,
+      pageSize: pagination.pageSize,
+      totalItems: pagination.totalItems,
+      totalPages: pagination.totalPages,
+      hasNextPage: pagination.hasNextPage,
+      hasPreviousPage: pagination.hasPreviousPage
+    });
   } catch (error) {
     next(error);
   }
@@ -294,65 +312,60 @@ entitiesRouter.post("/entities/:entityId/sections", async (req, res, next) => {
   }
 });
 
-entitiesRouter.patch(
-  "/entities/:entityId/sections/:sectionId",
-  async (req, res, next) => {
-    try {
-      const body: z.infer<typeof updateSectionSchema> = updateSectionSchema.parse(req.body);
+entitiesRouter.patch("/entities/:entityId/sections/:sectionId", async (req, res, next) => {
+  try {
+    const body: z.infer<typeof updateSectionSchema> = updateSectionSchema.parse(req.body);
 
-      const section = await prisma.entitySection.findFirst({
-        where: {
-          id: req.params.sectionId,
-          entityId: req.params.entityId
-        }
-      });
+    const existing = await prisma.entitySection.findFirst({
+      where: {
+        id: req.params.sectionId,
+        entityId: req.params.entityId
+      },
+      select: { id: true }
+    });
 
-      if (!section) {
-        res.status(404).json({ message: "Section not found for this entity." });
-        return;
-      }
-
-      const updated = await prisma.entitySection.update({
-        where: { id: req.params.sectionId },
-        data: omitUndefined({
-          sectionType: body.sectionType,
-          title: body.title,
-          content: body.content,
-          sortOrder: body.sortOrder
-        })
-      });
-
-      res.json(updated);
-    } catch (error) {
-      next(error);
+    if (!existing) {
+      res.status(404).json({ message: "Section not found." });
+      return;
     }
+
+    const updated = await prisma.entitySection.update({
+      where: { id: req.params.sectionId },
+      data: omitUndefined({
+        sectionType: body.sectionType,
+        title: body.title,
+        content: body.content,
+        sortOrder: body.sortOrder
+      })
+    });
+
+    res.json(updated);
+  } catch (error) {
+    next(error);
   }
-);
+});
 
-entitiesRouter.delete(
-  "/entities/:entityId/sections/:sectionId",
-  async (req, res, next) => {
-    try {
-      const section = await prisma.entitySection.findFirst({
-        where: {
-          id: req.params.sectionId,
-          entityId: req.params.entityId
-        },
-        select: { id: true }
-      });
+entitiesRouter.delete("/entities/:entityId/sections/:sectionId", async (req, res, next) => {
+  try {
+    const existing = await prisma.entitySection.findFirst({
+      where: {
+        id: req.params.sectionId,
+        entityId: req.params.entityId
+      },
+      select: { id: true }
+    });
 
-      if (!section) {
-        res.status(404).json({ message: "Section not found for this entity." });
-        return;
-      }
-
-      await prisma.entitySection.delete({
-        where: { id: req.params.sectionId }
-      });
-
-      res.status(204).send();
-    } catch (error) {
-      next(error);
+    if (!existing) {
+      res.status(404).json({ message: "Section not found." });
+      return;
     }
+
+    await prisma.entitySection.delete({
+      where: { id: req.params.sectionId }
+    });
+
+    res.status(204).send();
+  } catch (error) {
+    next(error);
   }
-);
+});

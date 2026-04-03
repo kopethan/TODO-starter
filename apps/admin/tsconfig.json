@@ -3,7 +3,10 @@
   "compilerOptions": {
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@todo/ui": ["../../packages/ui/src/index.ts"],
+      "@todo/types": ["../../packages/types/src/index.ts"],
+      "@todo/api-client": ["../../packages/api-client/src/index.ts"]
     }
   },
   "include": [

@@ -31,6 +31,16 @@ export type ModerationState = typeof moderationStates[number];
 export type SeverityLevel = typeof severityLevels[number];
 export type ReportOutcome = typeof reportOutcomes[number];
 
+export type PaginatedResponse<T> = {
+  items: T[];
+  page: number;
+  pageSize: number;
+  totalItems: number;
+  totalPages: number;
+  hasNextPage: boolean;
+  hasPreviousPage: boolean;
+};
+
 export type EntitySection = {
   id: string;
   entityId: string;
@@ -117,6 +127,21 @@ export type ReportDetail = ReportSummary & {
   updatedAt?: string;
 };
 
+
+export type BulkReportModerationInput = {
+  reportIds: string[];
+  verificationState?: VerificationState;
+  moderationState?: ModerationState;
+  severityLevel?: SeverityLevel;
+  outcome?: ReportOutcome;
+};
+
+export type BulkReportModerationResult = {
+  requestedCount: number;
+  updatedCount: number;
+  reportIds: string[];
+  missingIds: string[];
+};
 export type ReportModerationInput = {
   verificationState?: VerificationState;
   moderationState?: ModerationState;

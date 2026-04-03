@@ -38,7 +38,7 @@ const createReportSchema = z.object({
   isPublic: z.boolean().default(true)
 });
 
-const updateReportSchema = z
+const reportModerationFieldsSchema = z
   .object({
     verificationState: z.nativeEnum(VerificationState).optional(),
     moderationState: z.nativeEnum(ModerationState).optional(),
@@ -48,6 +48,12 @@ const updateReportSchema = z
   .refine((value) => Object.keys(value).length > 0, {
     message: "At least one field is required."
   });
+
+const bulkModerationSchema = reportModerationFieldsSchema.and(
+  z.object({
+    reportIds: z.array(z.string().min(1)).min(1).max(100)
+  })
+);
 
 reportsRouter.get("/reports", async (req, res, next) => {
   try {
@@ -74,6 +80,50 @@ reportsRouter.get("/reports", async (req, res, next) => {
     });
 
     res.json(reports);
+  } catch (error) {
+    next(error);
+  }
+});
+
+reportsRouter.post("/reports/bulk-moderation", async (req, res, next) => {
+  try {
+    const body = bulkModerationSchema.parse(req.body);
+
+    const existingReports = await prisma.experienceReport.findMany({
+      where: { id: { in: body.reportIds } },
+      select: { id: true }
+    });
+
+    const existingIds = existingReports.map((report) => report.id);
+    const missingIds = body.reportIds.filter((id) => !existingIds.includes(id));
+
+    if (existingIds.length === 0) {
+      res.status(404).json({
+        message: "No matching reports were found.",
+        requestedCount: body.reportIds.length,
+        updatedCount: 0,
+        reportIds: [],
+        missingIds
+      });
+      return;
+    }
+
+    const result = await prisma.experienceReport.updateMany({
+      where: { id: { in: existingIds } },
+      data: omitUndefined({
+        verificationState: body.verificationState,
+        moderationState: body.moderationState,
+        severityLevel: body.severityLevel,
+        outcome: body.outcome
+      })
+    });
+
+    res.json({
+      requestedCount: body.reportIds.length,
+      updatedCount: result.count,
+      reportIds: existingIds,
+      missingIds
+    });
   } catch (error) {
     next(error);
   }
@@ -150,7 +200,7 @@ reportsRouter.post("/reports", async (req, res, next) => {
 
 reportsRouter.patch("/reports/:id", async (req, res, next) => {
   try {
-    const body = updateReportSchema.parse(req.body);
+    const body = reportModerationFieldsSchema.parse(req.body);
 
     const existing = await prisma.experienceReport.findUnique({
       where: { id: req.params.id },
