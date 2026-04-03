@@ -2,10 +2,13 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@todo/api-client";
-import type { EntityDetail, EntitySummary } from "@todo/types";
+import type { EntityDetail, EntitySummary, PaginatedResponse } from "@todo/types";
 
 export function useEntities(filters: Record<string, string> = {}) {
-  return useQuery({ queryKey: ["entities", filters], queryFn: () => apiRequest<EntitySummary[]>("/entities", undefined, filters) });
+  return useQuery({
+    queryKey: ["entities", filters],
+    queryFn: () => apiRequest<PaginatedResponse<EntitySummary>>("/entities", undefined, filters)
+  });
 }
 
 export function useEntityBySlug(slug: string) {

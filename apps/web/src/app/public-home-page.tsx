@@ -38,8 +38,10 @@ export function PublicHomePage({ q }: { q: string }) {
   const entities = useEntities({ status: "PUBLISHED", visibility: "PUBLIC", q });
   const reports = useReports({ moderationState: "APPROVED" });
   const normalizedQuery = q.trim().toLowerCase();
+  const reportItems = reports.data?.items ?? [];
+  const entityItems = entities.data?.items ?? [];
 
-  const visibleReports = [...(reports.data ?? [])]
+  const visibleReports = [...reportItems]
     .filter((report) => {
       if (!normalizedQuery) return true;
       return [report.title, report.narrative, report.entity?.title]
@@ -53,7 +55,7 @@ export function PublicHomePage({ q }: { q: string }) {
     })
     .slice(0, 8);
 
-  const visibleEntities = (entities.data ?? []).slice(0, q ? 4 : 3);
+  const visibleEntities = entityItems.slice(0, q ? 4 : 3);
   const feed = buildFeed({ reports: visibleReports, entities: visibleEntities });
 
   return (
@@ -96,7 +98,7 @@ export function PublicHomePage({ q }: { q: string }) {
   );
 }
 
-type EntityCardItem = NonNullable<ReturnType<typeof useEntities>["data"]>[number];
+type EntityCardItem = NonNullable<ReturnType<typeof useEntities>["data"]>["items"][number];
 type FeedItem =
   | { kind: "report"; report: ReportSummary }
   | { kind: "entity"; entity: EntityCardItem }
@@ -142,7 +144,7 @@ function ReportFeedCard({ report }: { report: ReportSummary }) {
   );
 }
 
-function EntityFeedCard({ entity }: { entity: NonNullable<ReturnType<typeof useEntities>["data"]>[number] }) {
+function EntityFeedCard({ entity }: { entity: NonNullable<ReturnType<typeof useEntities>["data"]>["items"][number] }) {
   return (
     <Link href={`/entities/${entity.slug}`} className="block">
       <Card className="group rounded-[1.8rem] p-5 transition duration-200 hover:-translate-y-0.5 hover:shadow-[var(--shadow-card-hover)] sm:p-6">

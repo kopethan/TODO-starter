@@ -15,6 +15,7 @@ export default function EntityPage() {
   const params = useParams<{ slug: string }>();
   const entity = useEntityBySlug(params.slug);
   const reports = useReports(entity.data ? { entityId: entity.data.id, moderationState: "APPROVED" } : {});
+  const relatedReports = reports.data?.items ?? [];
 
   if (entity.isLoading) return <div className="mx-auto max-w-4xl px-4 py-10">Loading entity...</div>;
   if (!entity.data) return <div className="mx-auto max-w-4xl px-4 py-10">Entity not found.</div>;
@@ -80,7 +81,7 @@ export default function EntityPage() {
             <p className="mt-1 text-sm text-[var(--text-secondary)]">What people publicly reported about this entity, kept separate from canonical guidance.</p>
           </div>
           <div className="mt-5 space-y-3">
-            {(reports.data ?? []).slice(0, 5).map((report) => (
+            {relatedReports.slice(0, 5).map((report) => (
               <Link key={report.id} href={`/reports/${report.id}`} className="block">
                 <Card className="rounded-[1.5rem] p-4 transition hover:-translate-y-0.5 hover:shadow-[var(--shadow-card-hover)]">
                   <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
@@ -101,7 +102,7 @@ export default function EntityPage() {
                 </Card>
               </Link>
             ))}
-            {reports.data?.length === 0 ? <p className="text-sm text-[var(--text-secondary)]">No public reports are attached yet.</p> : null}
+            {relatedReports.length === 0 ? <p className="text-sm text-[var(--text-secondary)]">No public reports are attached yet.</p> : null}
             <Link href="/reports" className="inline-flex text-sm font-medium text-[var(--theme-700)] hover:underline">Open report archive</Link>
           </div>
         </Card>

@@ -22,8 +22,10 @@ export default function ReportsPage() {
 
   const reports = useReports({ entityId: filters.entityId, reportType: filters.reportType, verificationState: filters.verificationState, moderationState: "APPROVED" });
   const entities = useEntities({ status: "PUBLISHED", visibility: "PUBLIC" });
+  const reportItems = reports.data?.items ?? [];
+  const entityItems = entities.data?.items ?? [];
 
-  const activeFilters = summarizeFilters(filters, entities.data ?? []);
+  const activeFilters = summarizeFilters(filters, entityItems);
   const hasAdvancedFilters = Boolean(filters.entityId || filters.reportType || filters.severityLevel || filters.verificationState || filters.sort !== "signal");
 
   useEffect(() => {
@@ -32,7 +34,7 @@ export default function ReportsPage() {
   }, [initialQuery]);
 
   const visibleReports = useMemo(() => {
-    return [...(reports.data ?? [])]
+    return [...reportItems]
       .filter((report) => {
         const query = filters.q.trim().toLowerCase();
         const matchesQuery = !query
@@ -43,7 +45,7 @@ export default function ReportsPage() {
         return matchesQuery && matchesSeverity;
       })
       .sort((a, b) => sortReports(a, b, filters.sort));
-  }, [filters.q, filters.severityLevel, filters.sort, reports.data]);
+  }, [filters.q, filters.severityLevel, filters.sort, reportItems]);
 
   function applySearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -86,7 +88,7 @@ export default function ReportsPage() {
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
               <Select value={filters.entityId} onChange={(e) => setFilters((v) => ({ ...v, entityId: e.target.value }))} className="rounded-full bg-[var(--bg-surface-muted)] px-5 shadow-none">
                 <option value="">All entities</option>
-                {(entities.data ?? []).map((entity) => <option key={entity.id} value={entity.id}>{entity.title}</option>)}
+                {entityItems.map((entity) => <option key={entity.id} value={entity.id}>{entity.title}</option>)}
               </Select>
               <Select value={filters.severityLevel} onChange={(e) => setFilters((v) => ({ ...v, severityLevel: e.target.value }))} className="rounded-full bg-[var(--bg-surface-muted)] px-5 shadow-none">
                 <option value="">All severity</option>
