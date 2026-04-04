@@ -10,18 +10,27 @@ import { reportTypes, severityLevels, verificationStates } from "@todo/types";
 
 const severityRank: Record<string, number> = { CRITICAL: 4, HIGH: 3, MEDIUM: 2, LOW: 1 };
 const verificationRank: Record<string, number> = { VERIFIED: 3, PARTIALLY_VERIFIED: 2, UNVERIFIED: 1, REJECTED: 0 };
+const defaultFilters = { q: "", entityId: "", reportType: "", severityLevel: "", verificationState: "", sort: "signal" };
 
 export default function ReportsPage() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const initialQuery = searchParams.get("q") ?? "";
-  const [filters, setFilters] = useState({ q: initialQuery, entityId: "", reportType: "", severityLevel: "", verificationState: "", sort: "signal" });
-  const [draftQuery, setDraftQuery] = useState(initialQuery);
+  const [filters, setFilters] = useState(defaultFilters);
+  const [draftQuery, setDraftQuery] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
 
-  const reports = useReports({ entityId: filters.entityId, reportType: filters.reportType, verificationState: filters.verificationState, moderationState: "APPROVED" });
-  const entities = useEntities({ status: "PUBLISHED", visibility: "PUBLIC" });
+  const reports = useReports({
+    entityId: filters.entityId,
+    reportType: filters.reportType,
+    severityLevel: filters.severityLevel,
+    verificationState: filters.verificationState,
+    moderationState: "APPROVED",
+    q: filters.q,
+    page: "1",
+    pageSize: "100"
+  });
+  const entities = useEntities({ status: "PUBLISHED", visibility: "PUBLIC", page: "1", pageSize: "100" });
   const reportItems = reports.data?.items ?? [];
   const entityItems = entities.data?.items ?? [];
 
@@ -29,35 +38,24 @@ export default function ReportsPage() {
   const hasAdvancedFilters = Boolean(filters.entityId || filters.reportType || filters.severityLevel || filters.verificationState || filters.sort !== "signal");
 
   useEffect(() => {
-    setDraftQuery(initialQuery);
-    setFilters((current) => ({ ...current, q: initialQuery }));
-  }, [initialQuery]);
+    const nextFilters = readFiltersFromSearchParams(searchParams);
+    setFilters(nextFilters);
+    setDraftQuery(nextFilters.q);
+  }, [searchParams]);
 
   const visibleReports = useMemo(() => {
-    return [...reportItems]
-      .filter((report) => {
-        const query = filters.q.trim().toLowerCase();
-        const matchesQuery = !query
-          || report.title.toLowerCase().includes(query)
-          || report.narrative.toLowerCase().includes(query)
-          || report.entity?.title.toLowerCase().includes(query);
-        const matchesSeverity = !filters.severityLevel || report.severityLevel === filters.severityLevel;
-        return matchesQuery && matchesSeverity;
-      })
-      .sort((a, b) => sortReports(a, b, filters.sort));
-  }, [filters.q, filters.severityLevel, filters.sort, reportItems]);
+    return [...reportItems].sort((a, b) => sortReports(a, b, filters.sort));
+  }, [filters.sort, reportItems]);
+
+  function applyUrlFilters(nextFilters: typeof defaultFilters) {
+    const params = buildReportSearchParams(nextFilters);
+    const nextUrl = params.toString() ? `${pathname}?${params.toString()}` : pathname;
+    router.replace(nextUrl);
+  }
 
   function applySearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const query = draftQuery.trim();
-    setFilters((current) => ({ ...current, q: query }));
-
-    const params = new URLSearchParams(searchParams.toString());
-    if (query) params.set("q", query);
-    else params.delete("q");
-
-    const nextUrl = params.toString() ? `${pathname}?${params.toString()}` : pathname;
-    router.replace(nextUrl);
+    applyUrlFilters({ ...filters, q: draftQuery.trim() });
   }
 
   return (
@@ -117,10 +115,20 @@ export default function ReportsPage() {
                 </Select>
                 <Button
                   type="button"
+                  variant="secondary"
+                  className="rounded-full px-4 text-sm font-semibold"
+                  onClick={() => applyUrlFilters(filters)}
+                >
+                  Apply filters
+                </Button>
+                <Button
+                  type="button"
                   variant="ghost"
                   className="rounded-full px-4 text-[var(--text-secondary)]"
                   onClick={() => {
-                    setFilters({ q: filters.q, entityId: "", reportType: "", severityLevel: "", verificationState: "", sort: "signal" });
+                    const cleared = { ...defaultFilters, q: filters.q };
+                    setFilters(cleared);
+                    applyUrlFilters(cleared);
                   }}
                 >
                   Clear filters
@@ -131,7 +139,7 @@ export default function ReportsPage() {
         ) : null}
 
         <div className="px-1 text-sm text-[var(--text-secondary)]">
-          Approved reports from the public archive. Open any card to read the full details.
+          Approved reports from the public archive. Filters now map to real URL state, so the dock and this page stay aligned.
         </div>
       </section>
 
@@ -198,4 +206,28 @@ function summarizeFilters(
     filters.verificationState && formatEnum(filters.verificationState),
     filters.sort !== "signal" && `Sort: ${formatEnum(filters.sort)}`
   ].filter(Boolean) as string[];
+}
+
+function readFiltersFromSearchParams(searchParams: ReturnType<typeof useSearchParams>) {
+  return {
+    q: searchParams.get("q") ?? "",
+    entityId: searchParams.get("entityId") ?? "",
+    reportType: searchParams.get("reportType") ?? "",
+    severityLevel: searchParams.get("severityLevel") ?? "",
+    verificationState: searchParams.get("verificationState") ?? "",
+    sort: searchParams.get("sort") ?? "signal"
+  };
+}
+
+function buildReportSearchParams(filters: typeof defaultFilters) {
+  const params = new URLSearchParams();
+
+  if (filters.q) params.set("q", filters.q);
+  if (filters.entityId) params.set("entityId", filters.entityId);
+  if (filters.reportType) params.set("reportType", filters.reportType);
+  if (filters.severityLevel) params.set("severityLevel", filters.severityLevel);
+  if (filters.verificationState) params.set("verificationState", filters.verificationState);
+  if (filters.sort && filters.sort !== "signal") params.set("sort", filters.sort);
+
+  return params;
 }

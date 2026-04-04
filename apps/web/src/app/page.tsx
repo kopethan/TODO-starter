@@ -8,5 +8,11 @@ function readFirst(value: string | string[] | undefined) {
 
 export default async function HomePage({ searchParams }: { searchParams: SearchParams }) {
   const params = await searchParams;
-  return <PublicHomePage q={readFirst(params.q)} />;
+
+  return (
+    <PublicHomePage
+      q={readFirst(params.q)}
+      type={readFirst(params.type)}
+    />
+  );
 }

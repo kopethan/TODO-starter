@@ -1,181 +1,262 @@
 "use client";
 
 import Link from "next/link";
-import { Badge, Button, Card, EntityTypeBadge, Input, SeverityBadge, VerificationBadge, formatDate, formatEnum } from "@todo/ui";
+import { Badge, EntityTypeBadge, SeverityBadge, formatDate, formatEnum } from "@todo/ui";
+import { entityTypes, type EntitySummary, type ReportSummary } from "@todo/types";
 import { useEntities } from "@/features/entities";
-import { type ReportSummary, useReports } from "@/features/reports";
-
-const patternCards = [
-  {
-    slug: "payment-pressure",
-    label: "SIGNAL",
-    title: "Payment pressure",
-    summary: "Messages push the payment outside the normal flow before basic verification is done.",
-    context: "Tags: off-platform • advance payment • refund pressure",
-    href: "/reports?q=payment"
-  },
-  {
-    slug: "identity-mismatch",
-    label: "SIGNAL",
-    title: "Identity mismatch",
-    summary: "Names, profile details, or contact points change across the conversation or shared documents.",
-    context: "Tags: new phone • different name • profile switch",
-    href: "/reports?q=identity"
-  },
-  {
-    slug: "urgency-without-proof",
-    label: "SIGNAL",
-    title: "Urgency without proof",
-    summary: "A decision is pushed forward quickly while receipts, account history, or ownership proof stay unclear.",
-    context: "Tags: act now • limited time • missing proof",
-    href: "/reports?q=urgency"
-  }
-];
+import { useReports } from "@/features/reports";
 
 const severityRank: Record<string, number> = { CRITICAL: 4, HIGH: 3, MEDIUM: 2, LOW: 1 };
+const entityPageSize = 8;
+const reportPreviewPageSize = 40;
 
-export function PublicHomePage({ q }: { q: string }) {
-  const entities = useEntities({ status: "PUBLISHED", visibility: "PUBLIC", q });
-  const reports = useReports({ moderationState: "APPROVED" });
-  const normalizedQuery = q.trim().toLowerCase();
-  const reportItems = reports.data?.items ?? [];
+export function PublicHomePage({ q, type }: { q: string; type: string }) {
+  const activeType = entityTypes.includes(type as (typeof entityTypes)[number]) ? type : "";
+
+  const entities = useEntities({
+    status: "PUBLISHED",
+    visibility: "PUBLIC",
+    q,
+    ...(activeType ? { type: activeType } : {}),
+    page: "1",
+    pageSize: String(entityPageSize)
+  });
+  const reports = useReports({
+    moderationState: "APPROVED",
+    q,
+    page: "1",
+    pageSize: String(reportPreviewPageSize)
+  });
+
   const entityItems = entities.data?.items ?? [];
-
-  const visibleReports = [...reportItems]
-    .filter((report) => {
-      if (!normalizedQuery) return true;
-      return [report.title, report.narrative, report.entity?.title]
-        .filter(Boolean)
-        .some((value) => value!.toLowerCase().includes(normalizedQuery));
-    })
-    .sort((a, b) => {
-      const severityDelta = (severityRank[b.severityLevel] ?? 0) - (severityRank[a.severityLevel] ?? 0);
-      if (severityDelta !== 0) return severityDelta;
-      return new Date(b.reportedAt ?? 0).getTime() - new Date(a.reportedAt ?? 0).getTime();
-    })
-    .slice(0, 8);
-
-  const visibleEntities = entityItems.slice(0, q ? 4 : 3);
-  const feed = buildFeed({ reports: visibleReports, entities: visibleEntities });
+  const reportItems = reports.data?.items ?? [];
+  const feedItems = buildEntityFeed(entityItems, reportItems);
+  const hasResults = feedItems.length > 0;
 
   return (
-    <div className="mx-auto flex w-full max-w-[64rem] flex-col gap-5 px-4 py-5 sm:px-6 sm:py-6 lg:px-8 lg:py-8">
-      <section className="space-y-3">
-        <form action="/" className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <Input
-            name="q"
-            defaultValue={q}
-            placeholder="Search reports, entities, or signals"
-            className="h-14 rounded-full px-5 text-base"
-          />
-          <Button type="submit" variant="primary" className="h-14 rounded-full px-6 text-sm font-semibold">
-            Search
-          </Button>
-        </form>
-        {q ? <p className="px-2 text-sm text-[var(--text-secondary)]">Showing feed results for “{q}”.</p> : null}
+    <div className="mx-auto flex w-full max-w-[64rem] flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+      <section className="space-y-5">
+        <div className="space-y-3">
+          <Badge tone="theme" className="rounded-none border-0 bg-transparent px-0 py-0 tracking-[0.2em] text-[var(--theme-700)]">
+            PUBLIC FEED
+          </Badge>
+          <div className="space-y-2">
+            <h1 className="text-3xl font-semibold tracking-tight text-[var(--text-primary)] sm:text-[2.2rem]">
+              What to look at right now
+            </h1>
+            <p className="max-w-3xl text-sm leading-6 text-[var(--text-secondary)] sm:text-base">
+              The feed stays entity-first. Filters now run through real URL state, so the dock can refine this page without falling back to placeholder UI.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-4 text-sm">
+          <button
+            type="button"
+            onClick={() => window.dispatchEvent(new CustomEvent("todo:open-public-dock", { detail: { tool: "search" } }))}
+            className="font-medium text-[var(--text-primary)] transition hover:text-[var(--theme-700)]"
+          >
+            Open search
+          </button>
+          <button
+            type="button"
+            onClick={() => window.dispatchEvent(new CustomEvent("todo:open-public-dock", { detail: { tool: "filter" } }))}
+            className="font-medium text-[var(--text-primary)] transition hover:text-[var(--theme-700)]"
+          >
+            Open filter
+          </button>
+          <Link
+            href="/reports"
+            className="font-medium text-[var(--text-primary)] transition hover:text-[var(--theme-700)]"
+          >
+            Open reports archive
+          </Link>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {q ? <Badge>Query: {q}</Badge> : null}
+          {activeType ? <Badge tone="theme">Type: {formatEnum(activeType)}</Badge> : null}
+          {!q && !activeType ? <Badge>No feed filter applied</Badge> : null}
+        </div>
+
+        {q || activeType ? (
+          <p className="text-sm text-[var(--text-secondary)]">
+            Feed results stay grounded in the current URL filters. Use the bottom dock to change scope, refine entity type, or move into report-specific filtering.
+          </p>
+        ) : (
+          <p className="text-sm text-[var(--text-secondary)]">
+            Discovery stays lightweight here. Use the bottom dock for Search, Filter, and Ask AI, then go deeper on each entity page.
+          </p>
+        )}
       </section>
 
-      <div className="space-y-4 pb-4">
-        {feed.map((item) => {
-          if (item.kind === "report") {
-            return <ReportFeedCard key={`report-${item.report.id}`} report={item.report} />;
-          }
+      <section className="space-y-4 pb-4">
+        {feedItems.map((item, index) => (
+          <div key={item.entity.id} className="space-y-4">
+            {index > 0 ? <Divider /> : null}
+            <EntityFeedCard item={item} />
+          </div>
+        ))}
 
-          if (item.kind === "entity") {
-            return <EntityFeedCard key={`entity-${item.entity.id}`} entity={item.entity} />;
-          }
-
-          return <SignalFeedCard key={`signal-${item.signal.slug}`} signal={item.signal} />;
-        })}
-
-        {!entities.isLoading && !reports.isLoading && feed.length === 0 ? (
-          <Card className="rounded-[1.75rem] p-5 text-sm text-[var(--text-secondary)]">
-            No feed items match this search yet.
-          </Card>
+        {!entities.isLoading && !reports.isLoading && !hasResults ? (
+          <div className="space-y-4">
+            <Divider />
+            <div className="space-y-3 py-1">
+              <h2 className="text-lg font-semibold tracking-tight text-[var(--text-primary)]">No entities match this filter set yet.</h2>
+              <p className="max-w-2xl text-sm leading-6 text-[var(--text-secondary)]">
+                Try a broader search, clear the current entity type filter, or open the reports archive for a report-first read.
+              </p>
+              <div className="flex flex-wrap gap-4 text-sm">
+                <Link href="/" className="font-medium text-[var(--theme-700)] transition hover:opacity-80">
+                  Clear filters
+                </Link>
+                <button
+                  type="button"
+                  className="font-medium text-[var(--theme-700)] transition hover:opacity-80"
+                  onClick={() => window.dispatchEvent(new CustomEvent("todo:open-public-dock", { detail: { tool: "filter" } }))}
+                >
+                  Refine in dock
+                </button>
+              </div>
+            </div>
+          </div>
         ) : null}
-      </div>
+      </section>
     </div>
   );
 }
 
-type EntityCardItem = NonNullable<ReturnType<typeof useEntities>["data"]>["items"][number];
-type FeedItem =
-  | { kind: "report"; report: ReportSummary }
-  | { kind: "entity"; entity: EntityCardItem }
-  | { kind: "signal"; signal: (typeof patternCards)[number] };
+type EntityFeedItem = {
+  entity: EntitySummary;
+  relatedReports: ReportSummary[];
+  latestReport?: ReportSummary;
+  highestSeverity?: ReportSummary["severityLevel"];
+};
 
-function buildFeed({ reports, entities }: { reports: ReportSummary[]; entities: EntityCardItem[] }) {
-  const items: FeedItem[] = [];
+function buildEntityFeed(entities: EntitySummary[], reports: ReportSummary[]): EntityFeedItem[] {
+  const reportsByEntityId = new Map<string, ReportSummary[]>();
 
-  const max = Math.max(reports.length, entities.length, patternCards.length);
-
-  for (let index = 0; index < max; index += 1) {
-    if (reports[index]) items.push({ kind: "report", report: reports[index] });
-    if (index < entities.length && (index === 0 || index === 2)) items.push({ kind: "entity", entity: entities[index] });
-    if (index < patternCards.length && index < 2) items.push({ kind: "signal", signal: patternCards[index] });
+  for (const report of reports) {
+    const list = reportsByEntityId.get(report.entityId) ?? [];
+    list.push(report);
+    reportsByEntityId.set(report.entityId, list);
   }
 
-  if (entities[1]) items.splice(Math.min(3, items.length), 0, { kind: "entity", entity: entities[1] });
-  if (patternCards[2]) items.splice(Math.min(6, items.length), 0, { kind: "signal", signal: patternCards[2] });
+  return entities.map((entity) => {
+    const relatedReports = [...(reportsByEntityId.get(entity.id) ?? [])].sort(compareReports);
+    const latestReport = [...relatedReports].sort(compareNewest)[0];
+    const highestSeverity = relatedReports[0]?.severityLevel;
 
-  return items.slice(0, 12);
+    return {
+      entity,
+      relatedReports,
+      latestReport,
+      highestSeverity
+    };
+  });
 }
 
-function ReportFeedCard({ report }: { report: ReportSummary }) {
-  return (
-    <Link href={`/reports/${report.id}`} className="block">
-      <Card className="group rounded-[1.8rem] p-5 transition duration-200 hover:-translate-y-0.5 hover:shadow-[var(--shadow-card-hover)] sm:p-6">
-        <div className="flex items-start justify-between gap-4">
-          <Badge tone="default" className="tracking-[0.16em]">REPORT</Badge>
-          <div className="shrink-0"><SeverityBadge value={report.severityLevel} /></div>
-        </div>
-        <h2 className="mt-4 text-[1.35rem] font-semibold tracking-tight text-[var(--text-primary)]">{report.title}</h2>
-        <p className="mt-3 line-clamp-2 text-sm leading-6 text-[var(--text-secondary)]">{report.narrative}</p>
-        <div className="mt-4 flex flex-wrap items-center gap-2 text-sm text-[var(--text-secondary)]">
-          {report.entity ? <span className="font-medium text-[var(--text-primary)]">Related: {report.entity.title}</span> : <span className="font-medium text-[var(--text-primary)]">Related: General case</span>}
-          <VerificationBadge value={report.verificationState} />
-        </div>
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-[var(--text-muted)]">
-          <span>{formatEnum(report.reportType)}</span>
-          <span>{formatDate(report.happenedAt ?? report.reportedAt)}</span>
-        </div>
-      </Card>
-    </Link>
-  );
-}
+function EntityFeedCard({ item }: { item: EntityFeedItem }) {
+  const linkedReportCount = item.entity._count?.reports ?? 0;
+  const latestReportDate = item.latestReport?.happenedAt ?? item.latestReport?.reportedAt ?? item.entity.updatedAt;
 
-function EntityFeedCard({ entity }: { entity: NonNullable<ReturnType<typeof useEntities>["data"]>["items"][number] }) {
   return (
-    <Link href={`/entities/${entity.slug}`} className="block">
-      <Card className="group rounded-[1.8rem] p-5 transition duration-200 hover:-translate-y-0.5 hover:shadow-[var(--shadow-card-hover)] sm:p-6">
-        <div className="flex items-start justify-between gap-4">
+    <article className="grid gap-6 py-2 lg:grid-cols-[minmax(0,1fr)_18rem] lg:items-start lg:gap-8">
+      <div className="min-w-0 space-y-4">
+        <div className="flex flex-wrap items-center gap-2">
           <Badge tone="default" className="tracking-[0.16em]">ENTITY</Badge>
-          <EntityTypeBadge value={entity.entityType} />
+          <EntityTypeBadge value={item.entity.entityType} />
+          {item.highestSeverity ? <SeverityBadge value={item.highestSeverity} /> : <Badge tone="default">No approved reports</Badge>}
         </div>
-        <h2 className="mt-4 text-[1.35rem] font-semibold tracking-tight text-[var(--text-primary)]">{entity.title}</h2>
-        <p className="mt-3 line-clamp-2 text-sm leading-6 text-[var(--text-secondary)]">{entity.shortDescription}</p>
-        <p className="mt-4 text-sm font-medium text-[var(--text-primary)]">Includes normal flow, common risks, and related public reports.</p>
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-[var(--text-muted)]">
-          <span>{formatEnum(entity.status)}</span>
-          <span>{entity._count?.reports ?? 0} linked reports</span>
+
+        <div className="space-y-2">
+          <h2 className="text-[1.45rem] font-semibold tracking-tight text-[var(--text-primary)]">
+            {item.entity.title}
+          </h2>
+          <p className="max-w-3xl text-sm leading-6 text-[var(--text-secondary)] sm:text-[0.95rem]">
+            {item.entity.shortDescription}
+          </p>
         </div>
-      </Card>
-    </Link>
+
+        <div className="grid gap-4 text-sm sm:grid-cols-3 sm:gap-6">
+          <Fact label="Linked reports" value={String(linkedReportCount)} detail="Across this entity record." />
+          <Fact
+            label="Risk snapshot"
+            value={item.highestSeverity ? formatRiskCopy(item.highestSeverity) : "No public signal yet"}
+            detail={item.highestSeverity ? "Derived from approved report severity." : "No approved reports surfaced in the current feed preview."}
+          />
+          <Fact label="Last updated" value={formatDate(item.entity.updatedAt)} detail="Entity record freshness." />
+        </div>
+
+        <div className="flex flex-wrap items-center gap-4 text-sm">
+          <Link href={`/entities/${item.entity.slug}`} className="font-medium text-[var(--theme-700)] transition hover:opacity-80">
+            Open entity
+          </Link>
+          <span className="text-[var(--text-muted)]">Feed preview stays shallow by design.</span>
+        </div>
+      </div>
+
+      <aside className="space-y-2 lg:pt-0.5">
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">Latest approved report</p>
+        {item.latestReport ? (
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <SeverityBadge value={item.latestReport.severityLevel} />
+              <span className="text-xs text-[var(--text-muted)]">{formatDate(latestReportDate)}</span>
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-[var(--text-primary)]">{item.latestReport.title}</p>
+              <p className="mt-2 line-clamp-4 text-sm leading-6 text-[var(--text-secondary)]">
+                {item.latestReport.narrative}
+              </p>
+            </div>
+            <Link href={`/reports/${item.latestReport.id}`} className="inline-flex text-sm font-medium text-[var(--theme-700)] transition hover:opacity-80">
+              Read report
+            </Link>
+          </div>
+        ) : (
+          <p className="text-sm leading-6 text-[var(--text-secondary)]">
+            No approved report preview is available for this entity yet. Open the entity page for structured context and future additions.
+          </p>
+        )}
+      </aside>
+    </article>
   );
 }
 
-function SignalFeedCard({ signal }: { signal: (typeof patternCards)[number] }) {
+function Fact({ label, value, detail }: { label: string; value: string; detail: string }) {
   return (
-    <Link href={signal.href} className="block">
-      <Card className="group rounded-[1.8rem] p-5 transition duration-200 hover:-translate-y-0.5 hover:shadow-[var(--shadow-card-hover)] sm:p-6">
-        <div className="flex items-start justify-between gap-4">
-          <Badge tone="default" className="tracking-[0.16em]">{signal.label}</Badge>
-        </div>
-        <h2 className="mt-4 text-[1.35rem] font-semibold tracking-tight text-[var(--text-primary)]">{signal.title}</h2>
-        <p className="mt-3 line-clamp-2 text-sm leading-6 text-[var(--text-secondary)]">{signal.summary}</p>
-        <p className="mt-4 text-sm font-medium text-[var(--text-primary)]">{signal.context}</p>
-        <div className="mt-4 text-sm text-[var(--text-muted)]">Open the archive to read linked cases and compare details.</div>
-      </Card>
-    </Link>
+    <div className="space-y-1">
+      <p className="text-[0.72rem] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">{label}</p>
+      <p className="text-sm font-semibold text-[var(--text-primary)]">{value}</p>
+      <p className="text-xs leading-5 text-[var(--text-secondary)]">{detail}</p>
+    </div>
   );
+}
+
+function Divider() {
+  return <div className="h-px w-full bg-[linear-gradient(90deg,transparent,rgba(47,91,234,0.22),transparent)]" />;
+}
+
+function compareReports(a: ReportSummary, b: ReportSummary) {
+  const severityDelta = (severityRank[b.severityLevel] ?? 0) - (severityRank[a.severityLevel] ?? 0);
+  if (severityDelta !== 0) return severityDelta;
+  return compareNewest(a, b);
+}
+
+function compareNewest(a: ReportSummary, b: ReportSummary) {
+  return new Date(b.happenedAt ?? b.reportedAt ?? 0).getTime() - new Date(a.happenedAt ?? a.reportedAt ?? 0).getTime();
+}
+
+function formatRiskCopy(value: ReportSummary["severityLevel"]) {
+  switch (value) {
+    case "CRITICAL":
+      return "Critical public risk";
+    case "HIGH":
+      return "High public risk";
+    case "MEDIUM":
+      return "Moderate public risk";
+    default:
+      return "Low public risk";
+  }
 }

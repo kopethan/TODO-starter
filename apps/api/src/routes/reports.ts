@@ -19,6 +19,7 @@ const listReportsQuerySchema = z.object({
   reportType: z.nativeEnum(ReportType).optional(),
   moderationState: z.nativeEnum(ModerationState).optional(),
   verificationState: z.nativeEnum(VerificationState).optional(),
+  severityLevel: z.nativeEnum(SeverityLevel).optional(),
   q: z.string().trim().min(1).optional(),
   page: z.coerce.number().int().min(1).default(DEFAULT_PAGE),
   pageSize: z.coerce.number().int().min(1).max(MAX_PAGE_SIZE).default(DEFAULT_PAGE_SIZE)
@@ -53,6 +54,25 @@ const updateReportSchema = z
     message: "At least one field is required."
   });
 
+const bulkModerationSchema = z
+  .object({
+    reportIds: z.array(z.string().min(1)).min(1),
+    verificationState: z.nativeEnum(VerificationState).optional(),
+    moderationState: z.nativeEnum(ModerationState).optional(),
+    severityLevel: z.nativeEnum(SeverityLevel).optional(),
+    outcome: z.nativeEnum(ReportOutcome).optional()
+  })
+  .refine(
+    (value) =>
+      value.verificationState !== undefined
+      || value.moderationState !== undefined
+      || value.severityLevel !== undefined
+      || value.outcome !== undefined,
+    {
+      message: "At least one moderation field is required."
+    }
+  );
+
 reportsRouter.get("/reports", async (req, res, next) => {
   try {
     const query: z.infer<typeof listReportsQuerySchema> = listReportsQuerySchema.parse(req.query);
@@ -62,7 +82,8 @@ reportsRouter.get("/reports", async (req, res, next) => {
         entityId: query.entityId,
         reportType: query.reportType,
         moderationState: query.moderationState,
-        verificationState: query.verificationState
+        verificationState: query.verificationState,
+        severityLevel: query.severityLevel
       }),
       ...(query.q
         ? {
@@ -179,6 +200,47 @@ reportsRouter.post("/reports", async (req, res, next) => {
     });
 
     res.status(201).json(created);
+  } catch (error) {
+    next(error);
+  }
+});
+
+reportsRouter.post("/reports/bulk-moderation", async (req, res, next) => {
+  try {
+    const body: z.infer<typeof bulkModerationSchema> = bulkModerationSchema.parse(req.body);
+    const reportIds = Array.from(new Set(body.reportIds));
+
+    const existingReports = await prisma.experienceReport.findMany({
+      where: { id: { in: reportIds } },
+      select: { id: true }
+    });
+
+    const existingIds = existingReports.map((report) => report.id);
+    const existingIdSet = new Set(existingIds);
+    const missingIds = reportIds.filter((id) => !existingIdSet.has(id));
+
+    let updatedCount = 0;
+
+    if (existingIds.length > 0) {
+      const result = await prisma.experienceReport.updateMany({
+        where: { id: { in: existingIds } },
+        data: omitUndefined({
+          verificationState: body.verificationState,
+          moderationState: body.moderationState,
+          severityLevel: body.severityLevel,
+          outcome: body.outcome
+        })
+      });
+
+      updatedCount = result.count;
+    }
+
+    res.json({
+      requestedCount: reportIds.length,
+      updatedCount,
+      reportIds: existingIds,
+      missingIds
+    });
   } catch (error) {
     next(error);
   }
