@@ -8,7 +8,8 @@ import { ThemeToggle } from "@/components/layout/theme-toggle";
 const items = [
   { href: "/entities", label: "Entities" },
   { href: "/reports", label: "Reports" },
-  { href: "/reports/queue", label: "Moderation queue" }
+  { href: "/reports/queue", label: "Moderation queue" },
+  { href: "/contributions", label: "Contribution intake" }
 ];
 
 export function AdminShell({ children }: { children: React.ReactNode }) {
@@ -55,7 +56,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           <header className="flex items-center justify-between border-b border-[var(--border-default)] bg-[var(--bg-app)] px-4 py-4 sm:px-6 lg:px-8">
             <div>
               <p className="text-xs uppercase tracking-[0.18em] text-[var(--text-muted)]">Admin workspace</p>
-              <p className="mt-1 text-sm text-[var(--text-secondary)]">Entities, reports, and moderation queue.</p>
+              <p className="mt-1 text-sm text-[var(--text-secondary)]">Entities, reports, moderation, and public contribution intake.</p>
             </div>
             <div className="hidden lg:block">
               <ThemeToggle />

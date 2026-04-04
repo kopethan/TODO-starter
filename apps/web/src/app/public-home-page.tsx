@@ -65,12 +65,6 @@ export function PublicHomePage({ q, type }: { q: string; type: string }) {
           >
             Open filter
           </button>
-          <Link
-            href="/reports"
-            className="font-medium text-[var(--text-primary)] transition hover:text-[var(--theme-700)]"
-          >
-            Open reports archive
-          </Link>
         </div>
 
         <div className="flex flex-wrap gap-2">
@@ -81,11 +75,11 @@ export function PublicHomePage({ q, type }: { q: string; type: string }) {
 
         {q || activeType ? (
           <p className="text-sm text-[var(--text-secondary)]">
-            Feed results stay grounded in the current URL filters. Use the bottom dock to change scope, refine entity type, or move into report-specific filtering.
+            Feed results stay grounded in the current URL filters. Use the bottom dock to change scope, refine entity type, or jump straight into the right entity tab.
           </p>
         ) : (
           <p className="text-sm text-[var(--text-secondary)]">
-            Discovery stays lightweight here. Use the bottom dock for Search, Filter, and Ask AI, then go deeper on each entity page.
+            Discovery stays lightweight here. Use the bottom dock for Search, Filter, and Ask AI, then go deeper inside each entity page.
           </p>
         )}
       </section>
@@ -104,7 +98,7 @@ export function PublicHomePage({ q, type }: { q: string; type: string }) {
             <div className="space-y-3 py-1">
               <h2 className="text-lg font-semibold tracking-tight text-[var(--text-primary)]">No entities match this filter set yet.</h2>
               <p className="max-w-2xl text-sm leading-6 text-[var(--text-secondary)]">
-                Try a broader search, clear the current entity type filter, or open the reports archive for a report-first read.
+                Try a broader search, clear the current entity type filter, or open the dock to adjust the current scope.
               </p>
               <div className="flex flex-wrap gap-4 text-sm">
                 <Link href="/" className="font-medium text-[var(--theme-700)] transition hover:opacity-80">
@@ -210,8 +204,8 @@ function EntityFeedCard({ item }: { item: EntityFeedItem }) {
                 {item.latestReport.narrative}
               </p>
             </div>
-            <Link href={`/reports/${item.latestReport.id}`} className="inline-flex text-sm font-medium text-[var(--theme-700)] transition hover:opacity-80">
-              Read report
+            <Link href={`/entities/${item.entity.slug}?tab=reports`} className="inline-flex text-sm font-medium text-[var(--theme-700)] transition hover:opacity-80">
+              Open reports tab
             </Link>
           </div>
         ) : (

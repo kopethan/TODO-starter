@@ -13,5 +13,12 @@ export const adminQueryKeys = {
     list: (filters: Record<string, string>) => [...adminQueryKeys.reports.lists(), filters] as const,
     details: () => [...adminQueryKeys.reports.all, "detail"] as const,
     detail: (id: string) => [...adminQueryKeys.reports.details(), id] as const
+  },
+  contributions: {
+    all: ["contributions"] as const,
+    lists: () => [...adminQueryKeys.contributions.all, "list"] as const,
+    list: (filters: Record<string, string>) => [...adminQueryKeys.contributions.lists(), filters] as const,
+    details: () => [...adminQueryKeys.contributions.all, "detail"] as const,
+    detail: (id: string) => [...adminQueryKeys.contributions.details(), id] as const
   }
 };

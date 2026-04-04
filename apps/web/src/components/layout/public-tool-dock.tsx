@@ -2,14 +2,25 @@
 
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Button, Input, Select, formatEnum } from "@todo/ui";
-import { entityTypes, reportTypes, severityLevels, verificationStates } from "@todo/types";
+import { Button, Input, Select, Textarea, formatEnum } from "@todo/ui";
+import { entityTypes, reportTypes, severityLevels, signalSourceKinds, verificationStates } from "@todo/types";
 
 type DockTool = "search" | "filter" | "ai";
-type SearchTarget = "entities" | "reports";
+type SearchTarget = "entities" | "reports" | "signals";
+
+type PublicAiContext = {
+  scope?: "entity" | "contribution";
+  title?: string;
+  entityTitle?: string;
+  entitySlug?: string;
+  contextLines?: string[];
+  promptSuggestions?: string[];
+};
 
 type OpenDockEventDetail = {
   tool?: DockTool;
+  aiPrompt?: string;
+  aiContext?: PublicAiContext | null;
 };
 
 const recentSearchesKey = "todo.public.recent-searches";
@@ -22,6 +33,7 @@ const suggestedSearches = [
 
 const entityFilterKeys = ["type"] as const;
 const reportFilterKeys = ["entityId", "reportType", "severityLevel", "verificationState", "sort"] as const;
+const signalFilterKeys = ["entityType", "severityLevel", "sourceKind", "sort"] as const;
 
 export function PublicToolDock() {
   const router = useRouter();
@@ -30,12 +42,14 @@ export function PublicToolDock() {
   const panelRef = useRef<HTMLDivElement>(null);
   const dockRef = useRef<HTMLDivElement>(null);
   const currentQuery = searchParams.get("q") ?? "";
-  const initialTarget: SearchTarget = pathname?.startsWith("/reports") ? "reports" : "entities";
+  const initialTarget: SearchTarget = pathname?.startsWith("/reports") ? "reports" : pathname?.startsWith("/signals") ? "signals" : "entities";
 
   const [openTool, setOpenTool] = useState<DockTool | null>(null);
   const [searchValue, setSearchValue] = useState(currentQuery);
   const [searchTarget, setSearchTarget] = useState<SearchTarget>(initialTarget);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
+  const [aiPrompt, setAiPrompt] = useState("");
+  const [aiContext, setAiContext] = useState<PublicAiContext | null>(null);
 
   useEffect(() => {
     setSearchValue(currentQuery);
@@ -72,6 +86,14 @@ export function PublicToolDock() {
     function handleOpenDock(event: Event) {
       const customEvent = event as CustomEvent<OpenDockEventDetail>;
       const nextTool = customEvent.detail?.tool ?? "search";
+
+      if (typeof customEvent.detail?.aiPrompt === "string") {
+        setAiPrompt(customEvent.detail.aiPrompt);
+      }
+      if (customEvent.detail?.aiContext !== undefined) {
+        setAiContext(customEvent.detail.aiContext ?? null);
+      }
+
       setOpenTool(nextTool);
     }
 
@@ -160,7 +182,7 @@ export function PublicToolDock() {
                 />
               ) : null}
               {openTool === "filter" ? <FilterPanel currentQuery={currentQuery} pathname={pathname ?? "/"} onApply={() => setOpenTool(null)} /> : null}
-              {openTool === "ai" ? <AiPanel onUsePrompt={applyQuickSearch} /> : null}
+              {openTool === "ai" ? <AiPanel aiPrompt={aiPrompt} setAiPrompt={setAiPrompt} aiContext={aiContext} /> : null}
             </div>
           </div>
         ) : null}
@@ -206,6 +228,7 @@ function SearchPanel({
           <div className="flex flex-wrap gap-1.5">
             <TargetChip active={searchTarget === "entities"} onClick={() => setSearchTarget("entities")}>Entities</TargetChip>
             <TargetChip active={searchTarget === "reports"} onClick={() => setSearchTarget("reports")}>Reports</TargetChip>
+            <TargetChip active={searchTarget === "signals"} onClick={() => setSearchTarget("signals")}>Signals</TargetChip>
           </div>
           <div className="flex gap-2">
             <Button type="submit" variant="primary" className="h-9 rounded-full px-4 text-sm font-semibold">Search</Button>
@@ -217,7 +240,7 @@ function SearchPanel({
         <Input
           value={searchValue}
           onChange={(event) => setSearchValue(event.target.value)}
-          placeholder={searchTarget === "reports" ? "Search reports, entities, or situations" : "Search brands, platforms, products, or situations"}
+          placeholder={searchTarget === "reports" ? "Search reports, entities, or situations" : searchTarget === "signals" ? "Search signals, patterns, or risk themes" : "Search brands, platforms, products, or situations"}
           className="h-10 rounded-[1rem] border-[var(--border-strong)] bg-[var(--bg-surface)] px-4 shadow-none"
         />
       </form>
@@ -240,29 +263,35 @@ function SearchPanel({
 function FilterPanel({ currentQuery, pathname, onApply }: { currentQuery: string; pathname: string; onApply: () => void }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const activeType = pathname.startsWith("/reports") ? "reports" : "entities";
+  const activeType: SearchTarget = pathname.startsWith("/reports") ? "reports" : pathname.startsWith("/signals") ? "signals" : "entities";
   const [target, setTarget] = useState<SearchTarget>(activeType);
-  const [entityType, setEntityType] = useState(searchParams.get("type") ?? "");
+  const [entityType, setEntityType] = useState(searchParams.get(pathname.startsWith("/signals") ? "entityType" : "type") ?? "");
   const [reportType, setReportType] = useState(searchParams.get("reportType") ?? "");
   const [severityLevel, setSeverityLevel] = useState(searchParams.get("severityLevel") ?? "");
   const [verificationState, setVerificationState] = useState(searchParams.get("verificationState") ?? "");
-  const [sort, setSort] = useState(searchParams.get("sort") ?? "signal");
+  const [sourceKind, setSourceKind] = useState(searchParams.get("sourceKind") ?? "");
+  const [sort, setSort] = useState(searchParams.get("sort") ?? (pathname.startsWith("/signals") ? "strength" : "signal"));
 
   useEffect(() => {
     setTarget(activeType);
-    setEntityType(searchParams.get("type") ?? "");
+    setEntityType(searchParams.get(pathname.startsWith("/signals") ? "entityType" : "type") ?? "");
     setReportType(searchParams.get("reportType") ?? "");
     setSeverityLevel(searchParams.get("severityLevel") ?? "");
     setVerificationState(searchParams.get("verificationState") ?? "");
-    setSort(searchParams.get("sort") ?? "signal");
-  }, [activeType, searchParams]);
+    setSourceKind(searchParams.get("sourceKind") ?? "");
+    setSort(searchParams.get("sort") ?? (pathname.startsWith("/signals") ? "strength" : "signal"));
+  }, [activeType, pathname, searchParams]);
 
   const appliedLabels = [
     target === "entities" && entityType ? `Type: ${formatEnum(entityType)}` : null,
     target === "reports" && reportType ? `Report: ${formatEnum(reportType)}` : null,
     target === "reports" && severityLevel ? `Severity: ${formatEnum(severityLevel)}` : null,
     target === "reports" && verificationState ? `Verification: ${formatEnum(verificationState)}` : null,
-    target === "reports" && sort !== "signal" ? `Sort: ${formatEnum(sort)}` : null
+    target === "reports" && sort !== "signal" ? `Sort: ${formatEnum(sort)}` : null,
+    target === "signals" && entityType ? `Entity type: ${formatEnum(entityType)}` : null,
+    target === "signals" && severityLevel ? `Severity: ${formatEnum(severityLevel)}` : null,
+    target === "signals" && sourceKind ? `Source: ${formatEnum(sourceKind)}` : null,
+    target === "signals" && sort !== "strength" ? `Sort: ${formatEnum(sort)}` : null
   ].filter(Boolean) as string[];
 
   function applyFilters() {
@@ -271,14 +300,19 @@ function FilterPanel({ currentQuery, pathname, onApply }: { currentQuery: string
 
     if (target === "entities") {
       if (entityType) params.set("type", entityType);
-    } else {
+    } else if (target === "reports") {
       if (reportType) params.set("reportType", reportType);
       if (severityLevel) params.set("severityLevel", severityLevel);
       if (verificationState) params.set("verificationState", verificationState);
       if (sort && sort !== "signal") params.set("sort", sort);
+    } else {
+      if (entityType) params.set("entityType", entityType);
+      if (severityLevel) params.set("severityLevel", severityLevel);
+      if (sourceKind) params.set("sourceKind", sourceKind);
+      if (sort && sort !== "strength") params.set("sort", sort);
     }
 
-    const nextPath = target === "reports" ? "/reports" : "/";
+    const nextPath = target === "reports" ? "/reports" : target === "signals" ? "/signals" : "/";
     router.push(params.toString() ? `${nextPath}?${params.toString()}` : nextPath);
     onApply();
   }
@@ -288,11 +322,12 @@ function FilterPanel({ currentQuery, pathname, onApply }: { currentQuery: string
     setReportType("");
     setSeverityLevel("");
     setVerificationState("");
-    setSort("signal");
+    setSourceKind("");
+    setSort(target === "signals" ? "strength" : "signal");
 
     const params = new URLSearchParams();
     if (currentQuery.trim()) params.set("q", currentQuery.trim());
-    const nextPath = target === "reports" ? "/reports" : "/";
+    const nextPath = target === "reports" ? "/reports" : target === "signals" ? "/signals" : "/";
     router.push(params.toString() ? `${nextPath}?${params.toString()}` : nextPath);
     onApply();
   }
@@ -303,9 +338,7 @@ function FilterPanel({ currentQuery, pathname, onApply }: { currentQuery: string
         <div className="flex flex-wrap gap-1.5">
           <TargetChip active={target === "entities"} onClick={() => setTarget("entities")}>Entities</TargetChip>
           <TargetChip active={target === "reports"} onClick={() => setTarget("reports")}>Reports</TargetChip>
-          <span className="inline-flex items-center rounded-full border border-dashed border-[var(--border-default)] bg-[var(--bg-surface-muted)] px-3 py-1.5 text-sm text-[var(--text-muted)]">
-            Signals next
-          </span>
+          <TargetChip active={target === "signals"} onClick={() => setTarget("signals")}>Signals</TargetChip>
         </div>
         <div className="flex gap-2">
           <Button type="button" variant="primary" className="h-9 rounded-full px-4 text-sm font-semibold" onClick={applyFilters}>Apply</Button>
@@ -320,7 +353,7 @@ function FilterPanel({ currentQuery, pathname, onApply }: { currentQuery: string
             {entityTypes.map((value) => <option key={value} value={value}>{formatEnum(value)}</option>)}
           </Select>
         </div>
-      ) : (
+      ) : target === "reports" ? (
         <div className="grid gap-2 sm:grid-cols-2">
           <Select value={reportType} onChange={(event) => setReportType(event.target.value)} className="h-10 rounded-[1rem] bg-[var(--bg-surface)] shadow-none">
             <option value="">All report types</option>
@@ -340,6 +373,25 @@ function FilterPanel({ currentQuery, pathname, onApply }: { currentQuery: string
             <option value="verification">Sort by verification</option>
           </Select>
         </div>
+      ) : (
+        <div className="grid gap-2 sm:grid-cols-2">
+          <Select value={entityType} onChange={(event) => setEntityType(event.target.value)} className="h-10 rounded-[1rem] bg-[var(--bg-surface)] shadow-none">
+            <option value="">All entity types</option>
+            {entityTypes.map((value) => <option key={value} value={value}>{formatEnum(value)}</option>)}
+          </Select>
+          <Select value={severityLevel} onChange={(event) => setSeverityLevel(event.target.value)} className="h-10 rounded-[1rem] bg-[var(--bg-surface)] shadow-none">
+            <option value="">All severity</option>
+            {severityLevels.map((value) => <option key={value} value={value}>{formatEnum(value)}</option>)}
+          </Select>
+          <Select value={sourceKind} onChange={(event) => setSourceKind(event.target.value)} className="h-10 rounded-[1rem] bg-[var(--bg-surface)] shadow-none">
+            <option value="">All signal sources</option>
+            {signalSourceKinds.map((value) => <option key={value} value={value}>{formatEnum(value)}</option>)}
+          </Select>
+          <Select value={sort} onChange={(event) => setSort(event.target.value)} className="h-10 rounded-[1rem] bg-[var(--bg-surface)] shadow-none">
+            <option value="strength">Sort by strength</option>
+            <option value="newest">Sort by newest</option>
+          </Select>
+        </div>
       )}
 
       <CompactSection label="Active state" empty="No extra filters selected.">
@@ -350,37 +402,80 @@ function FilterPanel({ currentQuery, pathname, onApply }: { currentQuery: string
   );
 }
 
-function AiPanel({ onUsePrompt }: { onUsePrompt: (query: string, target?: SearchTarget) => void }) {
-  const prompts = [
-    "show common subscription trap patterns",
-    "find high risk reports this week",
-    "what entities have repeated complaints",
-    "compare scam warning signs"
-  ];
+function AiPanel({
+  aiPrompt,
+  setAiPrompt,
+  aiContext
+}: {
+  aiPrompt: string;
+  setAiPrompt: (value: string) => void;
+  aiContext: PublicAiContext | null;
+}) {
+  const prompts = aiContext?.promptSuggestions?.length
+    ? aiContext.promptSuggestions
+    : [
+        "show common subscription trap patterns",
+        "find high risk reports this week",
+        "what entities have repeated complaints",
+        "compare scam warning signs"
+      ];
 
   return (
     <div className="space-y-3">
       <div className="space-y-1">
-        <p className="text-sm font-medium text-[var(--text-primary)]">Grounded assistant entry</p>
+        <p className="text-sm font-medium text-[var(--text-primary)]">
+          {aiContext?.scope === "entity" && aiContext.entityTitle
+            ? `Ask about ${aiContext.entityTitle}`
+            : aiContext?.scope === "contribution" && aiContext.title
+              ? aiContext.title
+              : "Grounded assistant entry"}
+        </p>
         <p className="text-sm leading-5 text-[var(--text-secondary)]">
-          Ask AI should stay tied to connected entities and reports, with clear separation between observed facts and inference.
+          {aiContext?.scope === "entity"
+            ? "This shell is scoped to the current entity and should stay grounded in connected guidance, public reports, signals, and sources."
+            : aiContext?.scope === "contribution"
+              ? "This shell should help classify and structure a contribution draft, ask for missing fields, and preserve the user's meaning before any review step."
+              : "Ask AI should stay tied to connected entities and reports, with clear separation between observed facts and inference."}
+        </p>
+      </div>
+
+      {aiContext?.contextLines?.length ? (
+        <CompactSection label="Grounding context">
+          {aiContext.contextLines.map((line) => <InlineBadge key={line}>{line}</InlineBadge>)}
+        </CompactSection>
+      ) : null}
+
+      <div className="space-y-2 border-t border-[var(--border-default)] pt-2.5">
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">Prompt</p>
+          <div className="flex gap-2">
+            <Button type="button" variant="primary" className="h-9 rounded-full px-4 text-sm font-semibold" onClick={() => setAiPrompt(aiPrompt.trim())}>Keep draft</Button>
+            <Button type="button" variant="secondary" className="h-9 rounded-full px-4 text-sm font-semibold" onClick={() => setAiPrompt("")}>Clear</Button>
+          </div>
+        </div>
+        <Textarea
+          value={aiPrompt}
+          onChange={(event) => setAiPrompt(event.target.value)}
+          placeholder={aiContext?.scope === "entity" ? "Ask a grounded question about this entity" : aiContext?.scope === "contribution" ? "Ask for help structuring this contribution draft" : "Ask for a grounded summary or pattern comparison"}
+          className="min-h-24 rounded-[1rem] border-[var(--border-strong)] bg-[var(--bg-surface)] px-4 py-3 shadow-none"
+        />
+        <p className="text-xs text-[var(--text-muted)]">
+          This shell is ready for grounded prompting. Answer generation and citations are the next layer, not faked here.
         </p>
       </div>
 
       <CompactSection label="Suggested prompts">
         {prompts.map((prompt) => (
-          <InlineBadgeButton key={prompt} onClick={() => onUsePrompt(prompt, "entities")}>{prompt}</InlineBadgeButton>
+          <InlineBadgeButton
+            key={prompt}
+            onClick={() => {
+              setAiPrompt(prompt);
+            }}
+          >
+            {prompt}
+          </InlineBadgeButton>
         ))}
       </CompactSection>
-
-      <div className="grid gap-2 text-sm text-[var(--text-secondary)] sm:grid-cols-2">
-        <div className="rounded-[1rem] border border-[var(--border-default)] bg-[var(--bg-surface-muted)] px-3 py-2.5">
-          Summarize connected content and repeated red flags.
-        </div>
-        <div className="rounded-[1rem] border border-[var(--border-default)] bg-[var(--bg-surface-muted)] px-3 py-2.5">
-          Avoid unsupported claims or automatic public labeling.
-        </div>
-      </div>
     </div>
   );
 }
@@ -477,13 +572,18 @@ function buildNavigationUrl(target: SearchTarget, searchParams: ReturnType<typeo
       const value = searchParams.get(key);
       if (value) params.set(key, value);
     }
-  } else {
+  } else if (target === "reports") {
     for (const key of reportFilterKeys) {
+      const value = searchParams.get(key);
+      if (value) params.set(key, value);
+    }
+  } else {
+    for (const key of signalFilterKeys) {
       const value = searchParams.get(key);
       if (value) params.set(key, value);
     }
   }
 
-  const nextPath = target === "reports" ? "/reports" : "/";
+  const nextPath = target === "reports" ? "/reports" : target === "signals" ? "/signals" : "/";
   return params.toString() ? `${nextPath}?${params.toString()}` : nextPath;
 }

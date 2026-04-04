@@ -1,63 +1,42 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
-import type { ReportSummary } from "@todo/types";
-import { Badge, Card, EntityTypeBadge, SeverityBadge, VerificationBadge, formatDate, formatEnum } from "@todo/ui";
+import { useMemo, useState } from "react";
+import { useParams, useSearchParams } from "next/navigation";
+import { Badge, Button, Card, EntityTypeBadge, SeverityBadge, Textarea, VerificationBadge, formatDate, formatEnum } from "@todo/ui";
+import type { EntitySection, EntitySource, PublicSignalSummary, ReportSummary } from "@todo/types";
 import { useEntityBySlug } from "@/features/entities";
 import { useReports } from "@/features/reports";
+import { useSignals } from "@/features/signals";
 
 const overviewTypes = new Set(["DEFINITION", "PURPOSE"]);
 const flowTypes = new Set(["COMMON_USES", "NORMAL_PROCESS", "SAFE_USAGE"]);
 const riskTypes = new Set(["DANGERS", "RED_FLAGS", "COMMON_SCAMS", "HOW_TO_PROTECT_YOURSELF", "WHAT_TO_DO_IF_AFFECTED"]);
 const noteTypes = new Set(["NOTES", "RELATED_ALTERNATIVES"]);
+const tabIds = ["overview", "reports", "signals", "sources"] as const;
+type EntityTabId = (typeof tabIds)[number];
 
-const reportTypeSignalMeta: Partial<Record<ReportSummary["reportType"], { title: string; summary: string }>> = {
-  SCAM_ATTEMPT: {
-    title: "Repeated scam-attempt reports",
-    summary: "Multiple approved reports describe attempted deception or pressure tactics connected to this entity."
-  },
-  FRAUD_LOSS: {
-    title: "Loss reports are present",
-    summary: "Approved reports include money-loss outcomes, suggesting a pattern that deserves extra caution."
-  },
-  WARNING: {
-    title: "Warnings are recurring",
-    summary: "Several approved submissions are framed as warnings rather than isolated neutral experiences."
-  },
-  SAFETY_INCIDENT: {
-    title: "Safety incidents are recurring",
-    summary: "Approved reports point to repeated safety-related problems or near-misses tied to this entity."
-  },
-  QUALITY_ISSUE: {
-    title: "Quality issues repeat",
-    summary: "Approved reports show repeated quality-related complaints rather than a single one-off issue."
-  },
-  BAD_EXPERIENCE: {
-    title: "Negative experiences repeat",
-    summary: "Approved reports show a recurring negative experience pattern around this entity."
-  },
-  MISUSE_CASE: {
-    title: "Misuse cases appear repeatedly",
-    summary: "Approved reports suggest misuse or abuse scenarios that repeat often enough to matter."
-  }
+const tabLabels: Record<EntityTabId, string> = {
+  overview: "Overview",
+  reports: "Reports",
+  signals: "Signals",
+  sources: "Sources"
 };
 
-type SignalItem = {
-  id: string;
-  title: string;
-  theme: string;
-  summary: string;
-  evidenceLabel: string;
-  strengthHint: string;
-  tone: "theme" | "warning" | "danger" | "info" | "success";
-  latestAt?: string | null;
+type AggregatedSource = {
+  source: EntitySource;
+  supportingSections: Pick<EntitySection, "id" | "title" | "sectionType">[];
 };
 
 export default function EntityPage() {
   const params = useParams<{ slug: string }>();
+  const searchParams = useSearchParams();
+  const requestedTab = searchParams.get("tab");
+  const activeTab: EntityTabId = isEntityTab(requestedTab) ? requestedTab : "overview";
+
   const entity = useEntityBySlug(params.slug);
   const reports = useReports(entity.data ? { entityId: entity.data.id, moderationState: "APPROVED" } : {});
+  const signalsQuery = useSignals(entity.data ? { entityId: entity.data.id, pageSize: "24" } : {});
   const relatedReports = reports.data?.items ?? [];
 
   if (entity.isLoading) return <div className="mx-auto max-w-4xl px-4 py-10">Loading entity...</div>;
@@ -74,119 +53,103 @@ export default function EntityPage() {
   const overviewSections = grouped.overview.length ? grouped.overview : fallbackSection ? [fallbackSection] : [];
   const summarySection = grouped.flow[0] ?? overviewSections[0] ?? grouped.risks[0] ?? fallbackSection;
   const summaryText = summarySection?.content?.split("\n")[0] ?? entity.data.shortDescription;
-  const signals = buildEntitySignals(grouped.risks, relatedReports);
+  const signals = signalsQuery.data?.items ?? [];
+  const sources = aggregateSources(entity.data.sections);
+  const hasContextSections = grouped.flow.length > 0 || grouped.risks.length > 0 || grouped.notes.length > 0;
 
-  const desktopNav = [
-    { id: "overview", label: "Overview" },
-    { id: "flow", label: "How it normally works" },
-    { id: "risks", label: "Risks and red flags" },
-    { id: "reports", label: "Related reports" },
-    { id: "signals", label: "Signals and patterns" },
-    { id: "notes", label: "Important notes" }
-  ];
-
-  const mobileNav = [
-    { id: "overview", label: "Overview" },
-    { id: "flow", label: "Normal flow" },
-    { id: "risks", label: "Risks" },
-    { id: "reports", label: "Reports" },
-    { id: "signals", label: "Signals" }
-  ];
+  const visibleTabSummary = useMemo(() => ({
+    overview: `${entity.data.sections.length} structured sections`,
+    reports: `${relatedReports.length} public reports`,
+    signals: `${signals.length} public signals`,
+    sources: `${sources.length} supporting sources`
+  }), [entity.data.sections.length, relatedReports.length, signals.length, sources.length]);
 
   return (
-    <div className="mx-auto grid w-full max-w-7xl gap-6 px-4 py-5 sm:px-6 sm:py-6 lg:grid-cols-[220px_minmax(0,1fr)_280px] lg:px-8 lg:py-8">
-      <aside className="hidden lg:block">
-        <Card className="sticky top-28 rounded-[1.75rem] p-4">
-          <p className="text-xs font-medium uppercase tracking-[0.16em] text-[var(--text-muted)]">On this page</p>
-          <nav className="mt-3 space-y-2 text-sm text-[var(--text-secondary)]">
-            {desktopNav.map((item) => {
-              return <a key={item.id} href={`#${item.id}`} className="block rounded-xl px-2 py-1 transition hover:bg-[var(--bg-surface-muted)] hover:text-[var(--text-primary)]">{item.label}</a>;
-            })}
-          </nav>
-        </Card>
-      </aside>
+    <div className="mx-auto grid w-full max-w-[80rem] gap-6 px-4 py-5 sm:px-6 sm:py-6 lg:grid-cols-[minmax(0,1fr)_280px] lg:px-8 lg:py-8">
       <div className="space-y-5">
-        <div className="flex flex-wrap gap-2 lg:hidden">
-          {mobileNav.map((item) => {
-            return (
-              <a key={item.id} href={`#${item.id}`} className="rounded-full bg-[var(--bg-surface)] px-3 py-1.5 text-sm text-[var(--text-secondary)] shadow-[var(--button-secondary-shadow)]">
-                {item.label}
-              </a>
-            );
-          })}
-        </div>
-
         <Card className="rounded-[1.75rem] p-6 sm:p-7">
           <div className="flex flex-wrap items-center gap-2">
             <EntityTypeBadge value={entity.data.entityType} />
             <Badge tone="theme">{entity.data._count?.reports ?? 0} reports</Badge>
             <Badge tone={signals.length > 0 ? "warning" : "default"}>{signals.length} signals</Badge>
+            <Badge>{sources.length} sources</Badge>
             <Badge>{formatEnum(entity.data.status)}</Badge>
           </div>
           <h1 className="mt-4 text-3xl font-semibold tracking-tight sm:text-4xl">{entity.data.title}</h1>
-          <p className="mt-3 max-w-3xl text-lg text-[var(--text-secondary)]">{entity.data.shortDescription}</p>
+          <p className="mt-3 max-w-4xl text-lg text-[var(--text-secondary)]">{entity.data.shortDescription}</p>
           <div className="mt-6 rounded-[1.5rem] bg-[var(--theme-tint)] p-4 sm:p-5 shadow-[inset_0_0_0_1px_rgba(47,91,234,0.08)] dark:shadow-[inset_0_0_0_1px_rgba(125,162,255,0.12)]">
             <p className="text-xs font-medium uppercase tracking-[0.16em] text-[var(--theme-700)]">What to know first</p>
             <p className="mt-2 text-sm leading-6 text-[var(--text-primary)]">{summaryText}</p>
           </div>
+
+          <div className="mt-5 flex flex-wrap items-center gap-3 text-sm">
+            <span className="text-[var(--text-secondary)]">Share information:</span>
+            <Link href={buildContributionHref(entity.data.slug, entity.data.title, "report")} className="font-medium text-[var(--theme-700)] transition hover:opacity-80">
+              Share a report
+            </Link>
+            <Link href={buildContributionHref(entity.data.slug, entity.data.title, "signal")} className="font-medium text-[var(--theme-700)] transition hover:opacity-80">
+              Share a signal
+            </Link>
+            <Link href={buildContributionHref(entity.data.slug, entity.data.title, "source")} className="font-medium text-[var(--theme-700)] transition hover:opacity-80">
+              Add a source
+            </Link>
+            <Link href={buildContributionHref(entity.data.slug, entity.data.title, "update")} className="font-medium text-[var(--theme-700)] transition hover:opacity-80">
+              Suggest an update
+            </Link>
+          </div>
         </Card>
 
-        <SectionBlock id="overview" title="Overview" description="Reference context that defines the entity and keeps the page grounded." sections={overviewSections} />
-        <SectionBlock id="flow" title="How it normally works" description="Expected steps, common usage, or normal process before you compare any reported problem." sections={grouped.flow} emptyMessage="This section has not been structured yet." />
-        <SectionBlock id="risks" title="Risks and red flags" description="Repeated signals, danger points, and protection steps that matter before acting." sections={grouped.risks} tone="warning" emptyMessage="No specific risks have been added yet." />
-        <Card id="reports" className="rounded-[1.75rem] p-6">
-          <div>
-            <h2 className="text-2xl font-semibold tracking-tight">Related reports</h2>
-            <p className="mt-1 text-sm text-[var(--text-secondary)]">What people publicly reported about this entity, kept separate from canonical guidance.</p>
+        <section aria-label="Entity sections" className="space-y-4">
+          <div className="flex items-center gap-4">
+            <div className="h-px flex-1 bg-[var(--border-default)]" />
+            <nav className="flex min-w-0 flex-wrap items-center justify-center gap-2 text-sm" aria-label="Entity tabs">
+              {tabIds.map((tabId) => (
+                <TabLink
+                  key={tabId}
+                  entitySlug={entity.data.slug}
+                  tabId={tabId}
+                  active={activeTab === tabId}
+                  label={tabLabels[tabId]}
+                />
+              ))}
+            </nav>
+            <div className="h-px flex-1 bg-[var(--border-default)]" />
           </div>
-          <div className="mt-5 space-y-3">
-            {relatedReports.slice(0, 5).map((report) => (
-              <Link key={report.id} href={`/reports/${report.id}`} className="block">
-                <Card className="rounded-[1.5rem] p-4 transition hover:-translate-y-0.5 hover:shadow-[var(--shadow-card-hover)]">
-                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                    <div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Badge tone="default" className="tracking-[0.16em]">REPORT</Badge>
-                        <SeverityBadge value={report.severityLevel} />
-                        <VerificationBadge value={report.verificationState} />
-                      </div>
-                      <h3 className="mt-3 text-lg font-semibold">{report.title}</h3>
-                      <p className="mt-2 line-clamp-3 text-sm leading-6 text-[var(--text-secondary)]">{report.narrative}</p>
-                    </div>
-                    <div className="text-sm text-[var(--text-muted)] md:text-right">
-                      <p>{formatDate(report.happenedAt ?? report.reportedAt)}</p>
-                      <p className="mt-1">{formatEnum(report.reportType)}</p>
-                    </div>
-                  </div>
-                </Card>
-              </Link>
-            ))}
-            {relatedReports.length === 0 ? <p className="text-sm text-[var(--text-secondary)]">No public reports are attached yet.</p> : null}
-            <Link href="/reports" className="inline-flex text-sm font-medium text-[var(--theme-700)] hover:underline">Open report archive</Link>
-          </div>
-        </Card>
-        <Card id="signals" className="rounded-[1.75rem] p-6">
-          <div>
-            <h2 className="text-2xl font-semibold tracking-tight">Signals and patterns</h2>
-            <p className="mt-1 text-sm text-[var(--text-secondary)]">Lightweight public signals derived from approved reports and the structured risk guidance already attached to this entity.</p>
-          </div>
-          <div className="mt-5 space-y-3">
-            {signals.length > 0 ? signals.map((signal) => (
-              <div key={signal.id} className="rounded-[1.5rem] bg-[var(--bg-surface-muted)] p-4 shadow-[inset_0_0_0_1px_rgba(15,23,32,0.03)] sm:p-5 dark:shadow-[inset_0_0_0_1px_rgba(148,163,184,0.06)]">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge tone={signal.tone}>{signal.theme}</Badge>
-                  <Badge>{signal.evidenceLabel}</Badge>
-                  <Badge tone="info">{signal.strengthHint}</Badge>
-                  {signal.latestAt ? <Badge>{formatDate(signal.latestAt)}</Badge> : null}
+
+          <p className="text-sm text-[var(--text-secondary)]">
+            {visibleTabSummary[activeTab]}. Keep this page as the main reading surface, then switch tabs when you want the raw reports, repeated signals, or supporting sources.
+          </p>
+
+          {activeTab === "overview" ? (
+            <div className="space-y-5">
+              <SectionBlock id="overview" title="Overview" description="Reference context that defines the entity and keeps the page grounded." sections={overviewSections} />
+              {hasContextSections ? (
+                <div className="grid gap-5 xl:grid-cols-2">
+                  <SectionBlock id="flow" title="How it normally works" description="Expected steps, common usage, or normal process before you compare any reported problem." sections={grouped.flow} emptyMessage="This section has not been structured yet." compact />
+                  <SectionBlock id="risks" title="Risks and red flags" description="Repeated signals, danger points, and protection steps that matter before acting." sections={grouped.risks} tone="warning" emptyMessage="No specific risks have been added yet." compact />
                 </div>
-                <h3 className="mt-3 text-lg font-semibold">{signal.title}</h3>
-                <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">{signal.summary}</p>
-              </div>
-            )) : <p className="text-sm text-[var(--text-secondary)]">No grounded public signals are visible yet. As more approved reports or structured guidance are added, patterns will appear here.</p>}
-          </div>
-        </Card>
-        <SectionBlock id="notes" title="Important notes" description="Extra details, alternatives, or clarifications that round out the context." sections={grouped.notes} emptyMessage="No extra notes have been added yet." />
+              ) : null}
+              <SectionBlock id="notes" title="Important notes" description="Extra details, alternatives, or clarifications that round out the context." sections={grouped.notes} emptyMessage="No extra notes have been added yet." />
+              <AskAiSection
+                id="ask-ai"
+                entityTitle={entity.data.title}
+                entitySlug={entity.data.slug}
+                summaryText={summaryText}
+                sectionCount={entity.data.sections.length}
+                reportCount={relatedReports.length}
+                signalCount={signals.length}
+                sourceCount={sources.length}
+                riskCount={grouped.risks.length}
+              />
+            </div>
+          ) : null}
+
+          {activeTab === "reports" ? <ReportsPanel reports={relatedReports} entitySlug={entity.data.slug} entityTitle={entity.data.title} /> : null}
+          {activeTab === "signals" ? <SignalsPanel signals={signals} /> : null}
+          {activeTab === "sources" ? <SourcesPanel sources={sources} /> : null}
+        </section>
       </div>
+
       <aside className="hidden lg:block">
         <div className="sticky top-28 space-y-4">
           <Card className="rounded-[1.75rem] p-4">
@@ -195,6 +158,7 @@ export default function EntityPage() {
               <div><dt className="text-[var(--text-muted)]">Entity type</dt><dd className="mt-1">{formatEnum(entity.data.entityType)}</dd></div>
               <div><dt className="text-[var(--text-muted)]">Last updated</dt><dd className="mt-1">{formatDate(entity.data.updatedAt)}</dd></div>
               <div><dt className="text-[var(--text-muted)]">Status</dt><dd className="mt-1">{formatEnum(entity.data.status)}</dd></div>
+              <div><dt className="text-[var(--text-muted)]">Current tab</dt><dd className="mt-1">{tabLabels[activeTab]}</dd></div>
             </dl>
           </Card>
           <Card className="rounded-[1.75rem] p-4">
@@ -203,16 +167,308 @@ export default function EntityPage() {
               <div><dt className="text-[var(--text-muted)]">Sections</dt><dd className="mt-1">{entity.data.sections.length}</dd></div>
               <div><dt className="text-[var(--text-muted)]">Reports</dt><dd className="mt-1">{entity.data._count?.reports ?? 0}</dd></div>
               <div><dt className="text-[var(--text-muted)]">Signals</dt><dd className="mt-1">{signals.length}</dd></div>
+              <div><dt className="text-[var(--text-muted)]">Sources</dt><dd className="mt-1">{sources.length}</dd></div>
             </dl>
           </Card>
           <Card className="rounded-[1.75rem] p-4">
             <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">Reading hint</h2>
-            <p className="mt-3 text-sm text-[var(--text-secondary)]">Use this page for normal context first, then compare the attached public reports and derived signals to see where experiences start to cluster.</p>
+            <p className="mt-3 text-sm text-[var(--text-secondary)]">Use Overview for the grounded explanation first. Then switch into Reports, Signals, and Sources when you want the incoming evidence around this entity.</p>
           </Card>
         </div>
       </aside>
     </div>
   );
+}
+
+function isEntityTab(value: string | null): value is EntityTabId {
+  return tabIds.includes(value as EntityTabId);
+}
+
+function buildEntityTabHref(entitySlug: string, tabId: EntityTabId) {
+  return tabId === "overview" ? `/entities/${entitySlug}` : `/entities/${entitySlug}?tab=${tabId}`;
+}
+
+function TabLink({ entitySlug, tabId, active, label }: { entitySlug: string; tabId: EntityTabId; active: boolean; label: string }) {
+  return (
+    <Link
+      href={buildEntityTabHref(entitySlug, tabId)}
+      className={[
+        "inline-flex h-10 items-center rounded-full px-4 font-medium transition",
+        active
+          ? "bg-[var(--text-primary)] text-[var(--bg-app)]"
+          : "bg-[var(--bg-surface)] text-[var(--text-secondary)] shadow-[var(--button-secondary-shadow)] hover:text-[var(--text-primary)]"
+      ].join(" ")}
+    >
+      {label}
+    </Link>
+  );
+}
+
+function ReportsPanel({ reports, entitySlug, entityTitle }: { reports: ReportSummary[]; entitySlug: string; entityTitle: string }) {
+  return (
+    <Card id="reports" className="rounded-[1.75rem] p-6">
+      <div>
+        <h2 className="text-2xl font-semibold tracking-tight">Reports</h2>
+        <p className="mt-1 text-sm text-[var(--text-secondary)]">Incoming public reports now live under the entity itself, so you can compare them against the structured overview before reading the raw submissions.</p>
+      </div>
+      <div className="mt-5 space-y-3">
+        {reports.map((report) => (
+          <Link key={report.id} href={`/reports/${report.id}`} className="block">
+            <Card className="rounded-[1.5rem] p-4 transition hover:-translate-y-0.5 hover:shadow-[var(--shadow-card-hover)]">
+              <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge tone="default" className="tracking-[0.16em]">REPORT</Badge>
+                    <SeverityBadge value={report.severityLevel} />
+                    <VerificationBadge value={report.verificationState} />
+                  </div>
+                  <h3 className="mt-3 text-lg font-semibold">{report.title}</h3>
+                  <p className="mt-2 line-clamp-3 text-sm leading-6 text-[var(--text-secondary)]">{report.narrative}</p>
+                </div>
+                <div className="text-sm text-[var(--text-muted)] md:text-right">
+                  <p>{formatDate(report.happenedAt ?? report.reportedAt)}</p>
+                  <p className="mt-1">{formatEnum(report.reportType)}</p>
+                </div>
+              </div>
+            </Card>
+          </Link>
+        ))}
+        {reports.length === 0 ? <p className="text-sm text-[var(--text-secondary)]">No public reports are attached yet.</p> : null}
+        <Link href={buildContributionHref(entitySlug, entityTitle, "report")} className="inline-flex text-sm font-medium text-[var(--theme-700)] hover:underline">Share the first report</Link>
+      </div>
+    </Card>
+  );
+}
+
+function SignalsPanel({ signals }: { signals: PublicSignalSummary[] }) {
+  return (
+    <Card id="signals" className="rounded-[1.75rem] p-6">
+      <div>
+        <h2 className="text-2xl font-semibold tracking-tight">Signals and patterns</h2>
+        <p className="mt-1 text-sm text-[var(--text-secondary)]">Public signals connected to this entity, loaded from the shared public signal contract.</p>
+      </div>
+      <div className="mt-5 space-y-3">
+        {signals.length > 0 ? signals.map((signal) => (
+          <div key={signal.id} className="rounded-[1.5rem] bg-[var(--bg-surface-muted)] p-4 shadow-[inset_0_0_0_1px_rgba(15,23,32,0.03)] sm:p-5 dark:shadow-[inset_0_0_0_1px_rgba(148,163,184,0.06)]">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge tone={signal.severityLevel === "CRITICAL" || signal.severityLevel === "HIGH" ? "warning" : "theme"}>{formatEnum(signal.signalType)}</Badge>
+              <SeverityBadge value={signal.severityLevel} />
+              <Badge>{signal.evidenceCount} evidence items</Badge>
+              <Badge>{signal.strengthLabel}</Badge>
+            </div>
+            <h3 className="mt-3 text-lg font-semibold">{signal.title}</h3>
+            <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">{signal.summary}</p>
+            <div className="mt-3 flex flex-wrap items-center gap-3 text-sm text-[var(--text-muted)]">
+              {signal.lastSeenAt ? <span>Latest activity {formatDate(signal.lastSeenAt)}</span> : null}
+              {signal.firstSeenAt ? <span>First seen {formatDate(signal.firstSeenAt)}</span> : null}
+              <Link href={`/signals/${signal.slug}`} className="font-medium text-[var(--theme-700)] transition hover:opacity-80">Open signal detail</Link>
+            </div>
+          </div>
+        )) : <p className="text-sm text-[var(--text-secondary)]">No public signals are attached yet.</p>}
+      </div>
+    </Card>
+  );
+}
+
+function SourcesPanel({ sources }: { sources: AggregatedSource[] }) {
+  return (
+    <Card id="sources" className="rounded-[1.75rem] p-6">
+      <div>
+        <h2 className="text-2xl font-semibold tracking-tight">Supporting sources</h2>
+        <p className="mt-1 text-sm text-[var(--text-secondary)]">Public references that support the structured sections on this entity page.</p>
+      </div>
+      <div className="mt-5 space-y-4">
+        {sources.length > 0 ? sources.map((entry) => (
+          <div key={entry.source.id} className="rounded-[1.5rem] bg-[var(--bg-surface-muted)] p-4 shadow-[inset_0_0_0_1px_rgba(15,23,32,0.03)] sm:p-5 dark:shadow-[inset_0_0_0_1px_rgba(148,163,184,0.06)]">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge tone="theme">{formatEnum(entry.source.sourceType)}</Badge>
+              {entry.source.publisher ? <Badge>{entry.source.publisher}</Badge> : null}
+              {entry.source.reliabilityScore != null ? <Badge tone="info">Reliability {Math.round(entry.source.reliabilityScore * 100)}%</Badge> : null}
+              {entry.source.publishedAt ? <Badge>{formatDate(entry.source.publishedAt)}</Badge> : entry.source.retrievedAt ? <Badge>Retrieved {formatDate(entry.source.retrievedAt)}</Badge> : null}
+            </div>
+            <h3 className="mt-3 text-lg font-semibold">
+              {entry.source.url ? <a href={entry.source.url} target="_blank" rel="noreferrer" className="hover:text-[var(--theme-700)]">{entry.source.title}</a> : entry.source.title}
+            </h3>
+            {entry.source.notes ? <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">{entry.source.notes}</p> : null}
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs uppercase tracking-[0.14em] text-[var(--text-muted)]">
+              <span>Supports</span>
+              {entry.supportingSections.map((section) => (
+                <a key={`${entry.source.id}-${section.id}`} href={`#${section.id}`} className="rounded-full bg-[var(--bg-surface)] px-2.5 py-1 text-[10px] font-medium tracking-[0.14em] text-[var(--text-secondary)] shadow-[var(--button-secondary-shadow)]">
+                  {section.title}
+                </a>
+              ))}
+            </div>
+          </div>
+        )) : <p className="text-sm text-[var(--text-secondary)]">No public sources are attached yet. This section will fill in as linked references are added to the entity guidance.</p>}
+      </div>
+    </Card>
+  );
+}
+
+function aggregateSources(sections: EntitySection[]): AggregatedSource[] {
+  const sourceMap = new Map<string, AggregatedSource>();
+
+  for (const section of sections) {
+    for (const link of section.sources ?? []) {
+      const existing = sourceMap.get(link.source.id);
+      const supportingSection = {
+        id: section.id,
+        title: section.title,
+        sectionType: section.sectionType
+      };
+
+      if (existing) {
+        if (!existing.supportingSections.some((item) => item.id === section.id)) {
+          existing.supportingSections.push(supportingSection);
+        }
+        continue;
+      }
+
+      sourceMap.set(link.source.id, {
+        source: link.source,
+        supportingSections: [supportingSection]
+      });
+    }
+  }
+
+  return Array.from(sourceMap.values()).sort((left, right) => {
+    const leftDate = left.source.publishedAt ?? left.source.retrievedAt ?? "";
+    const rightDate = right.source.publishedAt ?? right.source.retrievedAt ?? "";
+
+    return rightDate.localeCompare(leftDate) || left.source.title.localeCompare(right.source.title);
+  });
+}
+
+function AskAiSection({
+  id,
+  entityTitle,
+  entitySlug,
+  summaryText,
+  sectionCount,
+  reportCount,
+  signalCount,
+  sourceCount,
+  riskCount
+}: {
+  id: string;
+  entityTitle: string;
+  entitySlug: string;
+  summaryText?: string;
+  sectionCount: number;
+  reportCount: number;
+  signalCount: number;
+  sourceCount: number;
+  riskCount: number;
+}) {
+  const promptSuggestions = [
+    `Summarize everything important about ${entityTitle}`,
+    `What are the biggest red flags for ${entityTitle}?`,
+    `Compare the strongest signals and reports for ${entityTitle}`,
+    `What should I check before using ${entityTitle}?`
+  ];
+  const contextLines = [
+    `${sectionCount} structured sections`,
+    `${reportCount} public reports`,
+    `${signalCount} active signals`,
+    `${sourceCount} supporting sources`,
+    riskCount > 0 ? `${riskCount} risk sections` : null
+  ].filter(Boolean) as string[];
+  const [draft, setDraft] = useState(promptSuggestions[0]);
+
+  function openAskAi(prompt?: string) {
+    if (typeof window === "undefined") return;
+
+    window.dispatchEvent(new CustomEvent("todo:open-public-dock", {
+      detail: {
+        tool: "ai",
+        aiPrompt: (prompt ?? draft).trim(),
+        aiContext: {
+          scope: "entity",
+          entityTitle,
+          entitySlug,
+          contextLines,
+          promptSuggestions
+        }
+      }
+    }));
+  }
+
+  return (
+    <Card id={id} className="rounded-[1.75rem] p-6">
+      <div>
+        <h2 className="text-2xl font-semibold tracking-tight">Ask AI</h2>
+        <p className="mt-1 text-sm text-[var(--text-secondary)]">
+          The strongest AI surface should live here, grounded in this entity&apos;s guidance, reports, signals, and sources rather than acting like a detached chatbot.
+        </p>
+      </div>
+
+      <div className="mt-5 flex flex-wrap gap-2">
+        {contextLines.map((line) => <Badge key={line}>{line}</Badge>)}
+      </div>
+
+      {summaryText ? (
+        <div className="mt-4 rounded-[1.25rem] bg-[var(--bg-surface-muted)] px-4 py-3 text-sm leading-6 text-[var(--text-secondary)]">
+          <span className="font-medium text-[var(--text-primary)]">Current grounding:</span> {summaryText}
+        </div>
+      ) : null}
+
+      <div className="mt-5 space-y-3">
+        <div>
+          <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">Prompt draft</p>
+          <Textarea
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            placeholder={`Ask a grounded question about ${entityTitle}`}
+            className="mt-2 min-h-28 rounded-[1.25rem] border-[var(--border-strong)] bg-[var(--bg-surface)] px-4 py-3 shadow-none"
+          />
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="primary" className="rounded-full px-4" onClick={() => openAskAi()}>
+            Open Ask AI
+          </Button>
+          <Button type="button" variant="secondary" className="rounded-full px-4" onClick={() => setDraft(promptSuggestions[0])}>
+            Reset to summary prompt
+          </Button>
+        </div>
+      </div>
+
+      <div className="mt-5 border-t border-[var(--border-default)] pt-4">
+        <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">Suggested prompts</p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {promptSuggestions.map((prompt) => (
+            <button
+              key={prompt}
+              type="button"
+              onClick={() => {
+                setDraft(prompt);
+                openAskAi(prompt);
+              }}
+              className="rounded-full border border-[var(--border-default)] bg-[var(--bg-surface-muted)] px-3 py-1.5 text-sm text-[var(--text-secondary)] transition hover:bg-[var(--bg-surface)] hover:text-[var(--text-primary)]"
+            >
+              {prompt}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-5 border-t border-[var(--border-default)] pt-4 text-sm text-[var(--text-secondary)]">
+        <p>
+          This shell is ready for grounded prompting. The next AI layer should answer from connected content and clearly separate canonical guidance, public reports, repeated signals, and supporting sources.
+        </p>
+      </div>
+    </Card>
+  );
+}
+
+function buildContributionHref(entitySlug: string, entityTitle: string, kind: "report" | "signal" | "source" | "update") {
+  const params = new URLSearchParams({
+    entitySlug,
+    entityTitle,
+    kind
+  });
+
+  return `/contribute?${params.toString()}`;
 }
 
 function SectionBlock({
@@ -221,7 +477,8 @@ function SectionBlock({
   description,
   sections,
   tone,
-  emptyMessage
+  emptyMessage,
+  compact = false
 }: {
   id: string;
   title: string;
@@ -229,6 +486,7 @@ function SectionBlock({
   sections: { id: string; title: string; content: string; sectionType: string }[];
   tone?: "warning";
   emptyMessage?: string;
+  compact?: boolean;
 }) {
   return (
     <Card id={id} className="rounded-[1.75rem] p-6">
@@ -244,129 +502,11 @@ function SectionBlock({
             }
           >
             <div className="flex flex-wrap items-center gap-2"><Badge tone={tone === "warning" ? "warning" : "theme"}>{formatEnum(section.sectionType)}</Badge></div>
-            <h3 className="mt-3 text-lg font-semibold">{section.title}</h3>
-            <p className="mt-2 whitespace-pre-wrap text-[var(--text-secondary)]">{section.content}</p>
+            <h3 id={section.id} className="mt-3 scroll-mt-28 text-lg font-semibold">{section.title}</h3>
+            <p className={compact ? "mt-2 whitespace-pre-wrap text-sm leading-6 text-[var(--text-secondary)]" : "mt-2 whitespace-pre-wrap text-[var(--text-secondary)]"}>{section.content}</p>
           </div>
         )) : <p className="text-sm text-[var(--text-secondary)]">{emptyMessage ?? "No content yet."}</p>}
       </div>
     </Card>
   );
-}
-
-function buildEntitySignals(
-  riskSections: { id: string; title: string; content: string; sectionType: string }[],
-  reports: ReportSummary[]
-): SignalItem[] {
-  const signals: SignalItem[] = [];
-  const now = Date.now();
-
-  if (riskSections.length > 0) {
-    signals.push({
-      id: "structured-risk-guidance",
-      title: riskSections.length > 1 ? "Structured red flags are documented" : "A structured red flag is documented",
-      theme: "Entity guidance",
-      summary: riskSections.length > 1
-        ? `This entity already has ${riskSections.length} risk-focused guidance sections covering warnings, protection steps, or danger points.`
-        : "This entity already has a dedicated risk-focused section that documents a concrete warning or protection step.",
-      evidenceLabel: `${riskSections.length} guidance ${riskSections.length === 1 ? "section" : "sections"}`,
-      strengthHint: strengthFromCount(riskSections.length),
-      tone: "warning"
-    });
-  }
-
-  const highSeverityReports = reports.filter((report) => ["HIGH", "CRITICAL"].includes(report.severityLevel));
-  if (highSeverityReports.length > 0) {
-    const latestAt = newestReportDate(highSeverityReports);
-    signals.push({
-      id: "high-severity-reports",
-      title: highSeverityReports.length > 1 ? "High-severity reports are recurring" : "A high-severity report is present",
-      theme: "Severity",
-      summary: highSeverityReports.length > 1
-        ? `Approved public reports include ${highSeverityReports.length} high-severity incidents, suggesting this is not limited to a single low-grade complaint.`
-        : "An approved public report has already been tagged high severity for this entity.",
-      evidenceLabel: `${highSeverityReports.length} high-severity ${highSeverityReports.length === 1 ? "report" : "reports"}`,
-      strengthHint: strengthFromCount(highSeverityReports.length),
-      tone: highSeverityReports.some((report) => report.severityLevel === "CRITICAL") ? "danger" : "warning",
-      latestAt
-    });
-  }
-
-  const verifiedReports = reports.filter((report) => report.verificationState === "VERIFIED" || report.verificationState === "PARTIALLY_VERIFIED");
-  if (verifiedReports.length > 0) {
-    signals.push({
-      id: "verified-public-reports",
-      title: verifiedReports.length > 1 ? "Verified reports are present" : "A verified report is present",
-      theme: "Verification",
-      summary: verifiedReports.length > 1
-        ? `There are ${verifiedReports.length} approved reports with verified or partially verified status, which gives extra weight to the public pattern.`
-        : "At least one approved report has been verified or partially verified, adding more weight than an entirely unverified stream.",
-      evidenceLabel: `${verifiedReports.length} verified ${verifiedReports.length === 1 ? "report" : "reports"}`,
-      strengthHint: strengthFromCount(verifiedReports.length),
-      tone: "info",
-      latestAt: newestReportDate(verifiedReports)
-    });
-  }
-
-  const recentReports = reports.filter((report) => {
-    const value = report.happenedAt ?? report.reportedAt;
-    if (!value) return false;
-    return now - new Date(value).getTime() <= 1000 * 60 * 60 * 24 * 90;
-  });
-  if (recentReports.length > 0) {
-    signals.push({
-      id: "recent-public-activity",
-      title: recentReports.length > 1 ? "Recent public activity is visible" : "Recent public activity is visible",
-      theme: "Freshness",
-      summary: recentReports.length > 1
-        ? `${recentReports.length} approved reports were filed or happened within roughly the last 90 days, so the public pattern is not purely historical.`
-        : "A recent approved report suggests the issue is still active enough to matter now, not only in older history.",
-      evidenceLabel: `${recentReports.length} recent ${recentReports.length === 1 ? "report" : "reports"}`,
-      strengthHint: strengthFromCount(recentReports.length),
-      tone: "theme",
-      latestAt: newestReportDate(recentReports)
-    });
-  }
-
-  const reportTypeCounts = reports.reduce<Record<string, ReportSummary[]>>((accumulator, report) => {
-    (accumulator[report.reportType] ??= []).push(report);
-    return accumulator;
-  }, {});
-
-  const dominantPattern = Object.entries(reportTypeCounts)
-    .filter(([, items]) => items.length >= 2)
-    .sort((a, b) => b[1].length - a[1].length)[0];
-
-  if (dominantPattern) {
-    const [reportType, items] = dominantPattern;
-    const meta = reportTypeSignalMeta[reportType as ReportSummary["reportType"]] ?? {
-      title: `${formatEnum(reportType)} reports repeat`,
-      summary: "A single report theme is showing up repeatedly enough to count as a public pattern."
-    };
-
-    signals.push({
-      id: `pattern-${reportType.toLowerCase()}`,
-      title: meta.title,
-      theme: "Repeated theme",
-      summary: meta.summary,
-      evidenceLabel: `${items.length} related ${items.length === 1 ? "report" : "reports"}`,
-      strengthHint: strengthFromCount(items.length),
-      tone: "warning",
-      latestAt: newestReportDate(items)
-    });
-  }
-
-  return signals.slice(0, 4);
-}
-
-function newestReportDate(reports: ReportSummary[]) {
-  return [...reports]
-    .map((report) => report.happenedAt ?? report.reportedAt)
-    .filter((value): value is string => Boolean(value))
-    .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0] ?? null;
-}
-
-function strengthFromCount(count: number) {
-  if (count >= 4) return "Strong cluster";
-  if (count >= 2) return "Repeated pattern";
-  return "Single grounded signal";
 }

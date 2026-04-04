@@ -23,7 +23,7 @@ export function PublicShell({ children }: { children: ReactNode }) {
 
           <nav className="ml-auto flex items-center gap-2">
             <HeaderLink href="/" active={pathname === "/"}>Feed</HeaderLink>
-            <HeaderLink href="/reports" active={pathname?.startsWith("/reports")}>Reports</HeaderLink>
+            <HeaderLink href="/contribute" active={pathname?.startsWith("/contribute")}>Share information</HeaderLink>
             <button
               type="button"
               className="inline-flex h-10 items-center rounded-full bg-white/[0.08] px-4 text-sm font-medium text-white transition hover:bg-white/[0.12]"
